@@ -12,3 +12,6 @@ coverage/
 
 # Local compile output (deno task compile)
 /herdr-mcp
+
+# Nix build symlink
+/result

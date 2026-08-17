@@ -31,6 +31,37 @@ deno task compile
 
 Do not commit the compiled `herdr-mcp` binary; it is gitignored.
 
+### Nix (flake)
+
+Add this repo as a flake input and put `herdr-mcp` on `PATH`:
+
+```nix
+# flake.nix inputs
+herdr-mcp.url = "github:boozedog/herdr-mcp";
+
+# home-manager / NixOS / nix profile
+environment.systemPackages = [ inputs.herdr-mcp.packages.${system}.herdr-mcp ];
+```
+
+One-off use without adding an input:
+
+```bash
+nix run github:boozedog/herdr-mcp
+nix build github:boozedog/herdr-mcp
+```
+
+From a clone, `nix build` produces `./result/bin/herdr-mcp`. The wrapper seeds a writable Deno cache under `$XDG_CACHE_HOME/herdr-mcp` (or `~/.cache/herdr-mcp`) and runs `deno run --cached-only -A` against the store-copied source. `-A` matches the non-Nix install path and allows env, subprocess (`herdr`), and cache read/write.
+
+For development without installing Deno globally:
+
+```bash
+nix develop   # devShell with deno
+deno task check
+deno task test
+```
+
+**Refreshing the Deno cache hash:** after bumping `deno.lock`, set `outputHash` in `flake.nix` to a placeholder (e.g. `sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=`), run `nix build`, and copy the `got:` hash from the mismatch error into `outputHash`. The FOD prefetches all Linux `msgpackr-extract` optional deps so one hash serves both `x86_64-linux` and `aarch64-linux`.
+
 ## MCP client configuration
 
 Wire the server as a **stdio** process. The MCP client must launch `herdr-mcp` **from inside a Herdr pane** so `HERDR_*` variables are inherited. A GUI-started client outside Herdr will only see structured `not_in_herdr` errors on every tool call.
