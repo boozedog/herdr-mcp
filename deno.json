@@ -6,6 +6,8 @@
   },
   "imports": {
     "@std/assert": "jsr:@std/assert@^1.0.0",
+    "@std/path": "jsr:@std/path@^1.0.0",
+    "@std/toml": "jsr:@std/toml@^1.0.0",
     "@modelcontextprotocol/server": "npm:@modelcontextprotocol/server@^2.0.0",
     "effect": "npm:effect@4.0.0-rc.108"
   },

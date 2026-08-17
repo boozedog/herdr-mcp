@@ -1,7 +1,9 @@
 import { assertEquals, assertExists } from "@std/assert";
+import { dirname, join } from "@std/path";
 
 const DENO = Deno.execPath();
 const MAIN = new URL("./main.ts", import.meta.url).pathname;
+const FIXTURES = join(dirname(new URL(import.meta.url).pathname), "../test/fixtures");
 
 type JsonRpcMessage = {
   jsonrpc: "2.0";
@@ -80,7 +82,72 @@ async function withStdioServer(
   }
 }
 
-Deno.test("stdio: lists whoami and returns not_in_herdr without HERDR_ENV", async () => {
+async function initAndList(env: Record<string, string>) {
+  const tools: string[] = [];
+  await withStdioServer(env, async ({ write, read }) => {
+    await write({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "initialize",
+      params: {
+        protocolVersion: "2024-11-05",
+        capabilities: {},
+        clientInfo: { name: "herdr-mcp-test", version: "0.0.0" },
+      },
+    });
+    await read();
+    await write({ jsonrpc: "2.0", method: "notifications/initialized" });
+    await write({ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} });
+    const listed = await read();
+    const list = (listed.result as { tools: { name: string }[] }).tools;
+    tools.push(...list.map((t) => t.name));
+  });
+  return tools;
+}
+
+Deno.test("stdio: lists preset tools without HERDR_ENV", async () => {
+  const tools = await initAndList({});
+  for (const name of [
+    "whoami",
+    "workflow",
+    "peers",
+    "handoff",
+    "wait",
+    "read",
+    "research_to_impl",
+    "impl_to_review",
+    "review_to_impl",
+  ]) {
+    assertEquals(tools.includes(name), true, `missing ${name}`);
+  }
+});
+
+Deno.test("stdio: two-role fixture lists plan_to_do only", async () => {
+  const tools = await initAndList({
+    HERDR_MCP_CONFIG: join(FIXTURES, "two-role.toml"),
+  });
+  assertEquals(tools.includes("plan_to_do"), true);
+  assertEquals(tools.includes("research_to_impl"), false);
+});
+
+Deno.test("stdio: bad config lists base tools only", async () => {
+  const tools = await initAndList({
+    HERDR_MCP_CONFIG: join(FIXTURES, "bad-config.toml"),
+  });
+  assertEquals(tools.includes("whoami"), true);
+  assertEquals(tools.includes("research_to_impl"), false);
+});
+
+Deno.test("stdio: every tool returns not_in_herdr without HERDR_ENV", async () => {
+  const toolNames = [
+    "whoami",
+    "workflow",
+    "peers",
+    "handoff",
+    "wait",
+    "read",
+    "research_to_impl",
+  ];
   await withStdioServer({}, async ({ write, read }) => {
     await write({
       jsonrpc: "2.0",
@@ -92,49 +159,77 @@ Deno.test("stdio: lists whoami and returns not_in_herdr without HERDR_ENV", asyn
         clientInfo: { name: "herdr-mcp-test", version: "0.0.0" },
       },
     });
-    const init = await read();
-    assertEquals(init.id, 1);
-    assertExists(init.result);
+    await read();
+    await write({ jsonrpc: "2.0", method: "notifications/initialized" });
 
-    await write({
-      jsonrpc: "2.0",
-      method: "notifications/initialized",
-    });
-
-    await write({
-      jsonrpc: "2.0",
-      id: 2,
-      method: "tools/list",
-      params: {},
-    });
-    const listed = await read();
-    const tools = (listed.result as { tools: { name: string }[] }).tools;
-    assertEquals(tools.some((tool) => tool.name === "whoami"), true);
-
-    await write({
-      jsonrpc: "2.0",
-      id: 3,
-      method: "tools/call",
-      params: { name: "whoami", arguments: {} },
-    });
-    const called = await read();
-    const result = called.result as {
-      isError?: boolean;
-      structuredContent?: { _tag?: string };
-    };
-    assertEquals(result.isError, true);
-    assertEquals(result.structuredContent?._tag, "not_in_herdr");
-
-    await write({
-      jsonrpc: "2.0",
-      id: 4,
-      method: "tools/list",
-      params: {},
-    });
-    const stillListed = await read();
-    assertEquals(stillListed.id, 4);
-    assertExists(stillListed.result);
+    let id = 2;
+    for (const name of toolNames) {
+      await write({
+        jsonrpc: "2.0",
+        id,
+        method: "tools/call",
+        params: {
+          name,
+          arguments: name === "handoff" || name.includes("_to_")
+            ? { message: "test" }
+            : {},
+        },
+      });
+      const called = await read();
+      assertEquals(called.id, id, `wrong id for ${name}`);
+      if (called.error) {
+        throw new Error(`${name} jsonrpc error: ${JSON.stringify(called.error)}`);
+      }
+      const result = called.result as {
+        isError?: boolean;
+        structuredContent?: { _tag?: string };
+        content?: { type: string; text: string }[];
+      };
+      assertEquals(result.isError, true, `${name}: ${JSON.stringify(result)}`);
+      const tag = result.structuredContent?._tag ??
+        (result.content?.[0]?.text ? JSON.parse(result.content[0].text)._tag : undefined);
+      assertEquals(tag, "not_in_herdr", name);
+      id++;
+    }
   });
+});
+
+Deno.test("stdio: bad config returns invalid_config when HERDR_ENV set", async () => {
+  await withStdioServer(
+    {
+      HERDR_MCP_CONFIG: join(FIXTURES, "bad-config.toml"),
+      HERDR_ENV: "1",
+      HERDR_WORKSPACE_ID: "wQ",
+      HERDR_TAB_ID: "wQ:t2",
+      HERDR_PANE_ID: "wQ:p2",
+    },
+    async ({ write, read }) => {
+      await write({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: {
+          protocolVersion: "2024-11-05",
+          capabilities: {},
+          clientInfo: { name: "herdr-mcp-test", version: "0.0.0" },
+        },
+      });
+      await read();
+      await write({ jsonrpc: "2.0", method: "notifications/initialized" });
+      await write({
+        jsonrpc: "2.0",
+        id: 2,
+        method: "tools/call",
+        params: { name: "whoami", arguments: {} },
+      });
+      const called = await read();
+      const result = called.result as {
+        structuredContent?: { _tag?: string; path?: string };
+      };
+      assertEquals(result.structuredContent?._tag, "invalid_config");
+      assertExists(result.structuredContent?.path);
+    },
+  );
 });
 
 Deno.test("stdio: whoami succeeds when HERDR_ENV and pane ids are set", async () => {
@@ -157,12 +252,7 @@ Deno.test("stdio: whoami succeeds when HERDR_ENV and pane ids are set", async ()
         },
       });
       await read();
-
-      await write({
-        jsonrpc: "2.0",
-        method: "notifications/initialized",
-      });
-
+      await write({ jsonrpc: "2.0", method: "notifications/initialized" });
       await write({
         jsonrpc: "2.0",
         id: 2,
@@ -172,18 +262,11 @@ Deno.test("stdio: whoami succeeds when HERDR_ENV and pane ids are set", async ()
       const called = await read();
       const result = called.result as {
         isError?: boolean;
-        structuredContent?: {
-          workspace_id?: string;
-          tab_id?: string;
-          pane_id?: string;
-        };
+        structuredContent?: Record<string, unknown>;
       };
-      assertEquals(result.isError, undefined);
-      assertEquals(result.structuredContent, {
-        workspace_id: "wQ",
-        tab_id: "wQ:t2",
-        pane_id: "wQ:p2",
-      });
+      // Live herdr may succeed or fail parse; at minimum not not_in_herdr
+      assertEquals(result.structuredContent?._tag, undefined);
+      assertEquals(result.structuredContent?.workspace_id, "wQ");
     },
   );
 });

@@ -1,0 +1,16 @@
+[[roles]]
+id = "plan"
+match = "^plan($|[0-9].*|-.*)"
+mutate = false
+
+[[roles]]
+id = "do"
+match = "^do($|[0-9].*|-.*)"
+mutate = true
+
+[[edges]]
+id = "plan_to_do"
+from = "plan"
+to = "do"
+wait = false
+tool = true
