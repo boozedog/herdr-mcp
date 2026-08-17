@@ -9,3 +9,6 @@
 # https://docs.deno.com/runtime/reference/cli/coverage/
 coverage/
 *.lcov
+
+# Local compile output (deno task compile)
+/herdr-mcp

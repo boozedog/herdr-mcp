@@ -2,7 +2,9 @@
   "tasks": {
     "check": "deno check src/main.ts",
     "test": "deno test -A src",
-    "dev": "deno run -A src/main.ts"
+    "dev": "deno run -A src/main.ts",
+    "install": "deno install -A --global -n herdr-mcp --force --config deno.json src/main.ts",
+    "compile": "deno compile -A -o herdr-mcp --config deno.json src/main.ts"
   },
   "imports": {
     "@std/assert": "jsr:@std/assert@^1.0.0",

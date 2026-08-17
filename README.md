@@ -7,24 +7,78 @@ This repository implements the stdio MCP surface described in [issue #1](https:/
 ## Requirements
 
 - [Deno](https://deno.com/) 2.x
-- A Herdr pane when you want live coordination context (`HERDR_ENV=1`)
+- [Herdr](https://github.com/boozedog/herdr) **0.8+** on `PATH` (for live coordination)
+- A Herdr pane with `HERDR_ENV=1` when you want tools to call into Herdr (see [Environment](#environment))
 
 ## Install
+
+Clone the repo, then install a `herdr-mcp` command on your `PATH`:
 
 ```bash
 git clone https://github.com/boozedog/herdr-mcp.git
 cd herdr-mcp
+deno task install
 ```
 
-## Run
+`deno task install` runs `deno install --global` and places a launcher in `~/.deno/bin`. That launcher runs `src/main.ts` from this clone and still requires Deno at runtime — moving or deleting the clone breaks the command. Ensure `~/.deno/bin` is on your `PATH`.
 
-Stdio MCP server (for MCP clients and Herdr panes):
+**Alternative:** compile a relocatable standalone binary and copy it somewhere on `PATH`:
+
+```bash
+deno task compile
+# e.g. cp herdr-mcp ~/.local/bin/
+```
+
+Do not commit the compiled `herdr-mcp` binary; it is gitignored.
+
+## MCP client configuration
+
+Wire the server as a **stdio** process. The MCP client must launch `herdr-mcp` **from inside a Herdr pane** so `HERDR_*` variables are inherited. A GUI-started client outside Herdr will only see structured `not_in_herdr` errors on every tool call.
+
+Grok-style TOML:
+
+```toml
+[mcp_servers.herdr]
+command = "herdr-mcp"
+```
+
+Cursor / VS Code-style JSON:
+
+```json
+{
+  "mcpServers": {
+    "herdr": {
+      "command": "herdr-mcp"
+    }
+  }
+}
+```
+
+For local development without installing, point `command` at Deno instead:
+
+```json
+{
+  "mcpServers": {
+    "herdr": {
+      "command": "deno",
+      "args": ["run", "-A", "--config", "deno.json", "src/main.ts"],
+      "cwd": "/path/to/herdr-mcp"
+    }
+  }
+}
+```
+
+Replace `/path/to/herdr-mcp` with your clone path. Prefer `command = "herdr-mcp"` after `deno task install`.
+
+## Run (development)
+
+Stdio MCP server without installing:
 
 ```bash
 deno task dev
 ```
 
-Check and test:
+## Test
 
 ```bash
 deno task check
@@ -73,6 +127,18 @@ With the default preset, these directional tools are also registered (`edge.tool
 | `review_to_impl` | review* | paired impl | no |
 
 Custom configs may register different `{edge.id}` tools or set `tool = false` and use `handoff { edge = "..." }` instead.
+
+Full v1 spec and rationale: [issue #1](https://github.com/boozedog/herdr-mcp/issues/1).
+
+## Non-goals (v1)
+
+This server is a **protocol MCP** for agent coordination, not a transport wrap of the full `herdr` CLI. It will not:
+
+- Expose raw pane, tab, or workspace CRUD (`herdr pane *`, splits, focus, and similar)
+- Provide SSH session tools ([#6](https://github.com/boozedog/herdr-mcp/issues/6) tracks follow-up work)
+- Replace Herdr itself — install and run Herdr separately
+- Enforce impl-only file edits (mutation policy stays in client instructions / `AGENTS.md`)
+- Hard-reject handoff markdown shape (envelope checks warn; they do not block submit)
 
 ## Architecture
 
