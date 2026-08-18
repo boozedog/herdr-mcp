@@ -6,7 +6,7 @@ This repository implements the stdio MCP surface described in [issue #1](https:/
 
 ## Requirements
 
-- [Deno](https://deno.com/) 2.x
+- [Deno](https://deno.com/) 2.x (development, `deno task install`, and Nix wrapper only — not required for the Homebrew install)
 - [Herdr](https://github.com/boozedog/herdr) **0.8+** on `PATH` (for live coordination)
 - A Herdr pane with `HERDR_ENV=1` when you want tools to call into Herdr (see [Environment](#environment))
 
@@ -30,6 +30,30 @@ deno task compile
 ```
 
 Do not commit the compiled `herdr-mcp` binary; it is gitignored.
+
+### Homebrew (macOS arm64)
+
+Prebuilt binary via the public tap — no Deno required at runtime:
+
+```bash
+brew install boozedog/tap/herdr-mcp
+```
+
+Or:
+
+```bash
+brew tap boozedog/tap
+brew install herdr-mcp
+```
+
+Upgrade and uninstall:
+
+```bash
+brew upgrade herdr-mcp
+brew uninstall herdr-mcp
+```
+
+Requires [Herdr](https://github.com/boozedog/herdr) 0.8+ on `PATH`. Launch your MCP client from inside a Herdr pane so `HERDR_*` is inherited (see [Environment](#environment)).
 
 ### Nix (flake)
 
@@ -174,6 +198,23 @@ This server is a **protocol MCP** for agent coordination, not a transport wrap o
 ## Architecture
 
 See [issue #1](https://github.com/boozedog/herdr-mcp/issues/1) for the architecture thesis. Herdr physics (workspace scope, busy-peer gate, parse/confirm rules) stay in code; roles and edges are data ([#7](https://github.com/boozedog/herdr-mcp/issues/7)).
+
+## Releasing
+
+Tagged pushes matching `v*` trigger [`.github/workflows/release.yml`](.github/workflows/release.yml) on a native `macos-15` (arm64) runner. The workflow:
+
+1. Runs `deno task compile` for `aarch64-apple-darwin`
+2. Ad-hoc codesigns the binary (`codesign -s -`)
+3. Packs `herdr-mcp-<version>-aarch64-apple-darwin.tar.gz` and attaches it to the GitHub Release
+4. Bumps `version` and `sha256` in [`boozedog/homebrew-tap`](https://github.com/boozedog/homebrew-tap) `Formula/herdr-mcp.rb`
+
+### Repository secrets
+
+| Secret | Purpose |
+| --- | --- |
+| `HOMEBREW_TAP_TOKEN` | PAT with `contents: write` on `boozedog/homebrew-tap`. Required for the tap-bump job. The workflow **fails** if this secret is missing. |
+
+`GITHUB_TOKEN` cannot push to a second repository.
 
 ## License
 
