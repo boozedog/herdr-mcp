@@ -206,15 +206,24 @@ Tagged pushes matching `v*` trigger [`.github/workflows/release.yml`](.github/wo
 1. Runs `deno task compile` for `aarch64-apple-darwin`
 2. Ad-hoc codesigns the binary (`codesign -s -`)
 3. Packs `herdr-mcp-<version>-aarch64-apple-darwin.tar.gz` and attaches it to the GitHub Release
-4. Bumps `version` and `sha256` in [`boozedog/homebrew-tap`](https://github.com/boozedog/homebrew-tap) `Formula/herdr-mcp.rb`
 
-### Repository secrets
+The job log prints the tarball SHA-256. Bump the Homebrew tap locally (same pattern as [smoovmux `scripts/release.sh`](https://github.com/boozedog/smoovmux/blob/main/scripts/release.sh)):
 
-| Secret | Purpose |
-| --- | --- |
-| `HOMEBREW_TAP_TOKEN` | PAT with `contents: write` on `boozedog/homebrew-tap`. Required for the tap-bump job. The workflow **fails** if this secret is missing. |
+```bash
+VERSION=0.2.0
+SHA256=<from release workflow log>
+TAP=../homebrew-tap   # or your clone of boozedog/homebrew-tap
+FORMULA="$TAP/Formula/herdr-mcp.rb"
 
-`GITHUB_TOKEN` cannot push to a second repository.
+sed -i.bak -E "s/^(  version )\"[0-9]+\.[0-9]+\.[0-9]+[^\"]*\"/\1\"$VERSION\"/" "$FORMULA"
+sed -i.bak -E "s/^(  sha256 )\"[a-f0-9]{64}\"/\1\"$SHA256\"/" "$FORMULA"
+rm -f "$FORMULA.bak"
+
+cd "$TAP"
+git add Formula/herdr-mcp.rb
+git commit -m "bump herdr-mcp to $VERSION"
+git push
+```
 
 ## License
 

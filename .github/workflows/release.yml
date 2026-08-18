@@ -14,10 +14,6 @@ jobs:
     permissions:
       contents: write
 
-    outputs:
-      version: ${{ steps.meta.outputs.version }}
-      sha256: ${{ steps.sha.outputs.sha256 }}
-
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
@@ -55,11 +51,9 @@ jobs:
           tar czf "$ASSET" herdr-mcp
           echo "ASSET=$ASSET" >> "$GITHUB_ENV"
 
-      - id: sha
-        name: Compute SHA-256
+      - name: Compute SHA-256
         run: |
           SHA256=$(shasum -a 256 "$ASSET" | awk '{print $1}')
-          echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
           echo "SHA-256: $SHA256"
 
       - name: Create GitHub release
@@ -68,52 +62,3 @@ jobs:
           files: ${{ env.ASSET }}
           generate_release_notes: true
           fail_on_unmatched_files: true
-
-  tap-bump:
-    needs: release
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Require HOMEBREW_TAP_TOKEN
-        env:
-          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-        run: |
-          if [ -z "$HOMEBREW_TAP_TOKEN" ]; then
-            echo "::error::HOMEBREW_TAP_TOKEN is not set. Add a PAT with contents:write on boozedog/homebrew-tap."
-            exit 1
-          fi
-
-      - name: Bump Formula in boozedog/homebrew-tap
-        env:
-          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-          VERSION: ${{ needs.release.outputs.version }}
-          SHA256: ${{ needs.release.outputs.sha256 }}
-        run: |
-          set -euo pipefail
-          git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/boozedog/homebrew-tap.git" tap
-          cd tap
-          FORMULA="Formula/herdr-mcp.rb"
-          if [ ! -f "$FORMULA" ]; then
-            echo "::error::$FORMULA not found in boozedog/homebrew-tap"
-            exit 1
-          fi
-          sed -i.bak -E "s/^(  version )\"[0-9]+\.[0-9]+\.[0-9]+[^\"]*\"/\1\"${VERSION}\"/" "$FORMULA"
-          sed -i.bak -E "s/^(  sha256 )\"[a-f0-9]{64}\"/\1\"${SHA256}\"/" "$FORMULA"
-          rm -f "$FORMULA.bak"
-          if ! grep -q "version \"${VERSION}\"" "$FORMULA"; then
-            echo "::error::Formula version was not updated to ${VERSION}"
-            exit 1
-          fi
-          if ! grep -q "sha256 \"${SHA256}\"" "$FORMULA"; then
-            echo "::error::Formula sha256 was not updated to ${SHA256}"
-            exit 1
-          fi
-          if git diff --quiet -- "$FORMULA"; then
-            echo "Formula already at version ${VERSION} with matching sha256"
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add "$FORMULA"
-          git commit -m "bump herdr-mcp to ${VERSION}"
-          git push origin HEAD
