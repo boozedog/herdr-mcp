@@ -174,6 +174,7 @@ Always registered:
 | `wait` | Wait until a peer reaches `idle`, `done`, or `blocked` |
 | `read` | Agent transcript only (`agent read --source recent-unwrapped`) |
 | `pane_read` | Any pane snapshot, including non-agent shells (`pane read`; use `tab_label` or `pane_id`) |
+| `pane_run` | Submit a command to any pane, including non-agent shells (`pane run`; pair with `pane_read` to inspect output) |
 
 With the default preset, these directional tools are also registered (`edge.tool = true` in config):
 

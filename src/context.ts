@@ -1,4 +1,5 @@
 import {
+  AmbiguousTarget,
   BusyPeer,
   ConfirmationError,
   encodeError,
@@ -162,6 +163,60 @@ export function resolvePeerPane(
     });
   }
   return pane;
+}
+
+export function resolveByTabLabel(
+  tabLabel: string,
+  workspaceId: string,
+  tabs: HerdrTab[],
+  panes: HerdrPane[],
+): HerdrPane | UnknownTarget | AmbiguousTarget {
+  const tab = tabs.find((t) => t.workspace_id === workspaceId && t.label === tabLabel);
+  if (!tab) {
+    return new UnknownTarget({
+      message: `No tab with label ${tabLabel} in workspace ${workspaceId}`,
+      target: tabLabel,
+    });
+  }
+  const tabPanes = panes.filter((p) => p.tab_id === tab.tab_id);
+  if (tabPanes.length === 0) {
+    return new UnknownTarget({
+      message: `No panes found for tab ${tabLabel}`,
+      target: tabLabel,
+    });
+  }
+  if (tabPanes.length > 1) {
+    return new AmbiguousTarget({
+      message: `Tab ${tabLabel} has ${tabPanes.length} panes; provide pane_id`,
+      tab_label: tabLabel,
+      pane_ids: tabPanes.map((p) => p.pane_id),
+    });
+  }
+  return tabPanes[0]!;
+}
+
+export type PaneTargetInput = {
+  pane_id?: string;
+  tab_label?: string;
+};
+
+export function resolvePaneTarget(
+  input: PaneTargetInput,
+  workspaceId: string,
+  tabs: HerdrTab[],
+  panes: HerdrPane[],
+): HerdrPane | UnknownTarget | AmbiguousTarget {
+  const hasPaneId = input.pane_id !== undefined && input.pane_id !== "";
+  const hasTabLabel = input.tab_label !== undefined && input.tab_label !== "";
+  if (hasPaneId === hasTabLabel) {
+    return new UnknownTarget({
+      message: "Provide exactly one of pane_id or tab_label",
+    });
+  }
+  if (hasPaneId) {
+    return resolveByPaneId(input.pane_id!, workspaceId, panes);
+  }
+  return resolveByTabLabel(input.tab_label!, workspaceId, tabs, panes);
 }
 
 export function resolveByPaneId(

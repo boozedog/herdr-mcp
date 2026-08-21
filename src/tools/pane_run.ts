@@ -9,27 +9,21 @@ import {
   successResult,
   workflowOrError,
 } from "../context.ts";
-import type { PaneReadSource } from "../herdr/client.ts";
+import { ParseFailed } from "../errors.ts";
+import { extractHerdrCliError, parsePromptOutput } from "../parse.ts";
 import { toMcpInputSchema } from "../mcp-schema.ts";
 
-const PaneReadSourceSchema = Schema.Union([
-  Schema.Literal("recent-unwrapped"),
-  Schema.Literal("recent"),
-  Schema.Literal("visible"),
-]);
-
-export const PaneReadArgs = Schema.Struct({
+export const PaneRunArgs = Schema.Struct({
   pane_id: Schema.optional(Schema.String),
   tab_label: Schema.optional(Schema.String),
-  lines: Schema.optional(Schema.Number),
-  source: Schema.optional(PaneReadSourceSchema),
+  command: Schema.String,
 });
 
-export type PaneReadInput = typeof PaneReadArgs.Type;
+export type PaneRunInput = typeof PaneRunArgs.Type;
 
-export async function handlePaneRead(
+export async function handlePaneRun(
   ctx: ServerContext,
-  input: PaneReadInput,
+  input: PaneRunInput,
 ): Promise<ToolResult> {
   const workflow = workflowOrError(ctx);
   if (isToolResult(workflow)) return workflow;
@@ -49,18 +43,27 @@ export async function handlePaneRead(
   if ("_tag" in resolved) return errorResult(resolved);
 
   const tab = callerCtx.tabs.find((t) => t.tab_id === resolved.tab_id);
-  const lines = input.lines ?? workflow.defaults.read_lines;
-  const source: PaneReadSource = input.source ?? "recent-unwrapped";
-  const transcript = await ctx.herdr.paneRead(resolved.pane_id, lines, source);
+  const run = await ctx.herdr.paneRun(resolved.pane_id, input.command);
+  const parsed = parsePromptOutput(run.stdout, run.exitCode);
+  if (parsed.kind === "error") return errorResult(parsed.error);
+
+  const accepted = parsed.kind === "accepted" ||
+    (parsed.kind === "json" && extractHerdrCliError(parsed.value) === undefined);
+  if (!accepted) {
+    return errorResult(new ParseFailed({
+      message: "herdr pane run was not accepted",
+      stdout: run.stdout.slice(0, 500),
+    }));
+  }
 
   return successResult({
     pane_id: resolved.pane_id,
     tab_id: resolved.tab_id,
     tab_label: tab?.label ?? "unknown",
-    source,
-    lines,
-    transcript,
+    command: input.command,
+    accepted,
+    raw_stdout: run.stdout.slice(0, 500),
   });
 }
 
-export const PaneReadInputSchema = toMcpInputSchema(PaneReadArgs);
+export const PaneRunInputSchema = toMcpInputSchema(PaneRunArgs);

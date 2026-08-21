@@ -6,6 +6,7 @@ import { handleWait } from "./tools/wait.ts";
 import { handlePeers } from "./tools/peers.ts";
 import { handleDirectionalEdge } from "./tools/directional.ts";
 import { handlePaneRead } from "./tools/pane_read.ts";
+import { handlePaneRun } from "./tools/pane_run.ts";
 import { handleRead } from "./tools/read.ts";
 import { handleWhoami } from "./tools/whoami.ts";
 import { computeToolNames } from "./server.ts";
@@ -382,4 +383,76 @@ Deno.test("tools: read still uses agentRead", async () => {
   const result = await handleRead(ctx, { role: "impl" });
   assertEquals(result.structuredContent?.transcript, "agent transcript");
   assertEquals(herdr.paneReadCalls.length, 0);
+});
+
+Deno.test("tools: pane_run by tab_label with single pane", async () => {
+  const herdr = mockWorkspace();
+  herdr.tabs.push({ tab_id: "wQ:t4", workspace_id: "wQ", label: "fish" });
+  herdr.panes.push({
+    pane_id: "wQ:p4",
+    tab_id: "wQ:t4",
+    workspace_id: "wQ",
+    agent_status: "unknown",
+  });
+  const ctx = createServerContext(HERDR_ENV, herdr);
+  const result = await handlePaneRun(ctx, { tab_label: "fish", command: "git status" });
+  assertEquals(result.isError, undefined);
+  assertEquals(result.structuredContent?.pane_id, "wQ:p4");
+  assertEquals(result.structuredContent?.tab_label, "fish");
+  assertEquals(result.structuredContent?.command, "git status");
+  assertEquals(result.structuredContent?.accepted, true);
+  assertEquals(herdr.paneRunCalls.length, 1);
+  assertEquals(herdr.paneRunCalls[0]?.target, "wQ:p4");
+  assertEquals(herdr.paneRunCalls[0]?.command, "git status");
+});
+
+Deno.test("tools: pane_run ambiguous tab_label", async () => {
+  const herdr = mockWorkspace();
+  herdr.tabs.push({ tab_id: "wQ:t4", workspace_id: "wQ", label: "split" });
+  herdr.panes.push({
+    pane_id: "wQ:p4",
+    tab_id: "wQ:t4",
+    workspace_id: "wQ",
+    agent_status: "unknown",
+  });
+  herdr.panes.push({
+    pane_id: "wQ:p5",
+    tab_id: "wQ:t4",
+    workspace_id: "wQ",
+    agent_status: "unknown",
+  });
+  const ctx = createServerContext(HERDR_ENV, herdr);
+  const result = await handlePaneRun(ctx, { tab_label: "split", command: "ls" });
+  assertEquals(result.structuredContent?._tag, "ambiguous_target");
+  assertEquals(herdr.paneRunCalls.length, 0);
+});
+
+Deno.test("tools: pane_run unknown tab_label", async () => {
+  const herdr = mockWorkspace();
+  const ctx = createServerContext(HERDR_ENV, herdr);
+  const result = await handlePaneRun(ctx, { tab_label: "missing", command: "ls" });
+  assertEquals(result.structuredContent?._tag, "unknown_target");
+  assertEquals(herdr.paneRunCalls.length, 0);
+});
+
+Deno.test("tools: pane_run foreign pane_id", async () => {
+  const herdr = mockWorkspace();
+  const ctx = createServerContext(HERDR_ENV, herdr);
+  const result = await handlePaneRun(ctx, { pane_id: "wX:p9", command: "ls" });
+  assertEquals(result.structuredContent?._tag, "unknown_target");
+  assertEquals(herdr.paneRunCalls.length, 0);
+});
+
+Deno.test("tools: pane_run shell pane does not use agentPrompt", async () => {
+  const herdr = mockWorkspace();
+  herdr.panes.push({
+    pane_id: "wQ:p4",
+    tab_id: "wQ:t1",
+    workspace_id: "wQ",
+    agent_status: "unknown",
+  });
+  const ctx = createServerContext(HERDR_ENV, herdr);
+  await handlePaneRun(ctx, { pane_id: "wQ:p4", command: "git status" });
+  assertEquals(herdr.paneRunCalls.length, 1);
+  assertEquals(herdr.prompts.length, 0);
 });

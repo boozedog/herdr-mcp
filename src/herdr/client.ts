@@ -48,6 +48,7 @@ export interface HerdrClient {
   agentWait(target: string, timeoutMs: number): Promise<{ stdout: string; exitCode: number }>;
   agentRead(target: string, lines: number): Promise<string>;
   paneRead(target: string, lines: number, source: PaneReadSource): Promise<string>;
+  paneRun(target: string, command: string): Promise<{ stdout: string; exitCode: number }>;
 }
 
 export type HerdrCommandRunner = (
@@ -168,6 +169,10 @@ export function createCliHerdrClient(
         String(lines),
       ]).then((r) => r.stdout);
     },
+    async paneRun(target, command) {
+      const r = await runner(["pane", "run", target, command]);
+      return { stdout: r.stdout, exitCode: r.exitCode };
+    },
   };
 }
 
@@ -181,6 +186,8 @@ export class MockHerdrClient implements HerdrClient {
   readResponses = new Map<string, string>();
   paneReadResponses = new Map<string, string>();
   paneReadCalls: { target: string; lines: number; source: PaneReadSource }[] = [];
+  paneRunResponses = new Map<string, { stdout: string; exitCode: number }>();
+  paneRunCalls: { target: string; command: string }[] = [];
   agentGetResponses = new Map<string, string>();
   paneGetResponses = new Map<string, string>();
   failAgentGet = false;
@@ -292,6 +299,13 @@ export class MockHerdrClient implements HerdrClient {
     const hit = this.paneReadResponses.get(target);
     if (hit) return Promise.resolve(hit);
     return Promise.resolve(`pane transcript for ${target} (${lines} lines, ${source})`);
+  }
+
+  async paneRun(target: string, command: string): Promise<{ stdout: string; exitCode: number }> {
+    this.paneRunCalls.push({ target, command });
+    const hit = this.paneRunResponses.get(target);
+    if (hit) return hit;
+    return { stdout: '{"id":"cli:pane:run","result":{"accepted":true}}', exitCode: 0 };
   }
 }
 

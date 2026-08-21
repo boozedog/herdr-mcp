@@ -116,3 +116,18 @@ Deno.test("client: paneRead invokes pane read transport", async () => {
     "50",
   ]);
 });
+
+Deno.test("client: paneRun invokes pane run transport", async () => {
+  const seen: string[] = [];
+  const client = createCliHerdrClient(async (args) => {
+    seen.push(...args);
+    return {
+      stdout: '{"id":"cli:pane:run","result":{"accepted":true}}',
+      stderr: "",
+      exitCode: 0,
+    };
+  });
+  const out = await client.paneRun("wQ:p9", "git status");
+  assertEquals(out.exitCode, 0);
+  assertEquals(seen, ["pane", "run", "wQ:p9", "git status"]);
+});

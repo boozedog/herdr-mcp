@@ -25,6 +25,11 @@ import {
   handlePaneRead,
   type PaneReadInput,
 } from "./tools/pane_read.ts";
+import {
+  PaneRunInputSchema,
+  handlePaneRun,
+  type PaneRunInput,
+} from "./tools/pane_run.ts";
 import { WaitInputSchema, handleWait, type WaitInput } from "./tools/wait.ts";
 import { handleWhoami, handleWorkflow } from "./tools/whoami.ts";
 import type { WorkflowLoadResult } from "./workflow/loader.ts";
@@ -37,6 +42,7 @@ const BASE_TOOLS = [
   "wait",
   "read",
   "pane_read",
+  "pane_run",
 ] as const;
 
 export type HerdrMcpOptions = {
@@ -173,6 +179,16 @@ export function registerHerdrTools(
       inputSchema: PaneReadInputSchema,
     },
     guardTool<PaneReadInput>(ctx, (args) => handlePaneRead(ctx, args)),
+  );
+
+  server.registerTool(
+    "pane_run",
+    {
+      description:
+        "Submit a command to any pane in the current workspace, including non-agent shells (fish, git, logs). Pair with pane_read to inspect output.",
+      inputSchema: PaneRunInputSchema,
+    },
+    guardTool<PaneRunInput>(ctx, (args) => handlePaneRun(ctx, args)),
   );
 
   if (ctx.workflowResult.ok) {
