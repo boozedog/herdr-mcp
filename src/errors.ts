@@ -50,6 +50,17 @@ export class ConfirmationError extends Schema.TaggedError<ConfirmationError>()("
   detail: Schema.optional(Schema.String),
 }) {}
 
+export class AmbiguousTarget extends Schema.TaggedError<AmbiguousTarget>()("ambiguous_target", {
+  message: Schema.String,
+  tab_label: Schema.String,
+  pane_ids: Schema.Array(Schema.String),
+}) {}
+
+export class HerdrBinError extends Schema.TaggedError<HerdrBinError>()("herdr_bin_error", {
+  message: Schema.String,
+  path: Schema.String,
+}) {}
+
 export type HerdrMcpError =
   | NotInHerdr
   | InvalidConfig
@@ -59,7 +70,9 @@ export type HerdrMcpError =
   | WrongRole
   | PromptStalled
   | ParseFailed
-  | ConfirmationError;
+  | ConfirmationError
+  | AmbiguousTarget
+  | HerdrBinError;
 
 export const NOT_IN_HERDR_MESSAGE =
   "Not running inside Herdr. Start this MCP server from a Herdr pane with HERDR_ENV=1.";
@@ -78,6 +91,8 @@ const encoders = {
   prompt_stalled: Schema.encodeUnknownSync(PromptStalled),
   parse_failed: Schema.encodeUnknownSync(ParseFailed),
   confirmation_error: Schema.encodeUnknownSync(ConfirmationError),
+  ambiguous_target: Schema.encodeUnknownSync(AmbiguousTarget),
+  herdr_bin_error: Schema.encodeUnknownSync(HerdrBinError),
 } as const;
 
 export function encodeError(error: HerdrMcpError): Record<string, unknown> {

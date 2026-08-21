@@ -84,10 +84,11 @@ Deno.test("server: whoami with HERDR_ENV returns expanded contract", async () =>
   assertEquals(result.structuredContent?.mutate, true);
 });
 
-Deno.test("server: preset exposes six base tools plus three directional", () => {
+Deno.test("server: preset exposes seven base tools plus three directional", () => {
   const names = computeToolNames({
     ok: true,
     workflow: normalizeWorkflow(RESEARCH_IMPL_REVIEW_PRESET, "research-impl-review", null),
   });
-  assertEquals(names.length, 9);
+  assertEquals(names.length, 10);
+  assertEquals(names.includes("pane_read"), true);
 });

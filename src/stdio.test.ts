@@ -114,6 +114,7 @@ Deno.test("stdio: lists preset tools without HERDR_ENV", async () => {
     "handoff",
     "wait",
     "read",
+    "pane_read",
     "research_to_impl",
     "impl_to_review",
     "review_to_impl",

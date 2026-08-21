@@ -1,4 +1,5 @@
 import type { AgentStatus } from "../parse.ts";
+import { HerdrBinError } from "../errors.ts";
 
 export type HerdrTab = {
   tab_id: string;
@@ -36,6 +37,8 @@ export type WaitResult = {
   timed_out?: boolean;
 };
 
+export type PaneReadSource = "recent-unwrapped" | "recent" | "visible";
+
 export interface HerdrClient {
   tabList(workspaceId: string): Promise<string>;
   paneList(workspaceId: string): Promise<string>;
@@ -44,14 +47,83 @@ export interface HerdrClient {
   agentPrompt(target: string, text: string): Promise<{ stdout: string; exitCode: number }>;
   agentWait(target: string, timeoutMs: number): Promise<{ stdout: string; exitCode: number }>;
   agentRead(target: string, lines: number): Promise<string>;
+  paneRead(target: string, lines: number, source: PaneReadSource): Promise<string>;
 }
 
 export type HerdrCommandRunner = (
   args: string[],
 ) => Promise<{ stdout: string; stderr: string; exitCode: number }>;
 
+function isAbsolutePath(path: string): boolean {
+  return path.startsWith("/");
+}
+
+function isExecutableFile(path: string): boolean {
+  try {
+    const stat = Deno.statSync(path);
+    if (!stat.isFile) return false;
+    return (stat.mode! & 0o111) !== 0;
+  } catch {
+    return false;
+  }
+}
+
+/** Resolve argv0 for herdr CLI subprocesses. */
+export function resolveHerdrBinPath(
+  env: Record<string, string | undefined> = Deno.env.toObject(),
+): { path: string } | { error: HerdrBinError } {
+  const configured = env.HERDR_BIN_PATH?.trim();
+  if (!configured) {
+    return { path: "herdr" };
+  }
+  if (!isAbsolutePath(configured)) {
+    return {
+      error: new HerdrBinError({
+        message: "HERDR_BIN_PATH must be a non-empty absolute path",
+        path: configured,
+      }),
+    };
+  }
+  if (!isExecutableFile(configured)) {
+    return {
+      error: new HerdrBinError({
+        message: `HERDR_BIN_PATH is missing or not executable: ${configured}`,
+        path: configured,
+      }),
+    };
+  }
+  return { path: configured };
+}
+
+export function createDefaultRunner(
+  env: Record<string, string | undefined> = Deno.env.toObject(),
+): HerdrCommandRunner {
+  const resolved = resolveHerdrBinPath(env);
+  if ("error" in resolved) {
+    return async () => {
+      throw resolved.error;
+    };
+  }
+  const binPath = resolved.path;
+  return async (args) => {
+    const cmd = new Deno.Command(binPath, {
+      args,
+      stdout: "piped",
+      stderr: "piped",
+    });
+    const output = await cmd.output();
+    const stdout = new TextDecoder().decode(output.stdout);
+    const stderr = new TextDecoder().decode(output.stderr);
+    return {
+      stdout: stdout || stderr,
+      stderr,
+      exitCode: output.code,
+    };
+  };
+}
+
 export function createCliHerdrClient(
-  runner: HerdrCommandRunner = defaultRunner,
+  runner: HerdrCommandRunner = createDefaultRunner(),
 ): HerdrClient {
   return {
     tabList(workspaceId) {
@@ -85,24 +157,17 @@ export function createCliHerdrClient(
         String(lines),
       ]).then((r) => r.stdout);
     },
-  };
-}
-
-async function defaultRunner(
-  args: string[],
-): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-  const cmd = new Deno.Command("herdr", {
-    args,
-    stdout: "piped",
-    stderr: "piped",
-  });
-  const output = await cmd.output();
-  const stdout = new TextDecoder().decode(output.stdout);
-  const stderr = new TextDecoder().decode(output.stderr);
-  return {
-    stdout: stdout || stderr,
-    stderr,
-    exitCode: output.code,
+    paneRead(target, lines, source) {
+      return runner([
+        "pane",
+        "read",
+        target,
+        "--source",
+        source,
+        "--lines",
+        String(lines),
+      ]).then((r) => r.stdout);
+    },
   };
 }
 
@@ -114,6 +179,8 @@ export class MockHerdrClient implements HerdrClient {
   promptResponses = new Map<string, { stdout: string; exitCode: number }>();
   waitResponses = new Map<string, { stdout: string; exitCode: number }>();
   readResponses = new Map<string, string>();
+  paneReadResponses = new Map<string, string>();
+  paneReadCalls: { target: string; lines: number; source: PaneReadSource }[] = [];
   agentGetResponses = new Map<string, string>();
   paneGetResponses = new Map<string, string>();
   failAgentGet = false;
@@ -218,6 +285,13 @@ export class MockHerdrClient implements HerdrClient {
     const hit = this.readResponses.get(target);
     if (hit) return Promise.resolve(hit);
     return Promise.resolve(`transcript for ${target} (${lines} lines)`);
+  }
+
+  paneRead(target: string, lines: number, source: PaneReadSource): Promise<string> {
+    this.paneReadCalls.push({ target, lines, source });
+    const hit = this.paneReadResponses.get(target);
+    if (hit) return Promise.resolve(hit);
+    return Promise.resolve(`pane transcript for ${target} (${lines} lines, ${source})`);
   }
 }
 

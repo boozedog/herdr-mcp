@@ -150,6 +150,7 @@ Herdr injects these variables into panes that host agents:
 | `HERDR_WORKSPACE_ID` | Workspace id |
 | `HERDR_TAB_ID` | Tab id |
 | `HERDR_PANE_ID` | Pane id |
+| `HERDR_BIN_PATH` | When set, absolute path to the real `herdr` binary (exec this instead of `PATH` lookup) |
 
 Optional workflow config (first match wins):
 
@@ -171,7 +172,8 @@ Always registered:
 | `peers` | Tabs and panes in the current `HERDR_WORKSPACE_ID` only |
 | `handoff` | Submit a message (fire-and-forget with revision/seq confirmation); does not wait |
 | `wait` | Wait until a peer reaches `idle`, `done`, or `blocked` |
-| `read` | `agent read --source recent-unwrapped` transcript |
+| `read` | Agent transcript only (`agent read --source recent-unwrapped`) |
+| `pane_read` | Any pane snapshot, including non-agent shells (`pane read`; use `tab_label` or `pane_id`) |
 
 With the default preset, these directional tools are also registered (`edge.tool = true` in config):
 

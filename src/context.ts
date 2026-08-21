@@ -12,6 +12,7 @@ import {
 } from "./errors.ts";
 import {
   createCliHerdrClient,
+  createDefaultRunner,
   type HerdrClient,
   type HerdrPane,
   type HerdrTab,
@@ -52,7 +53,7 @@ export type ServerContext = {
 
 export function createServerContext(
   env: Record<string, string | undefined> = Deno.env.toObject(),
-  herdr: HerdrClient = createCliHerdrClient(),
+  herdr: HerdrClient = createCliHerdrClient(createDefaultRunner(env)),
   cwd = Deno.cwd(),
 ): ServerContext {
   return {

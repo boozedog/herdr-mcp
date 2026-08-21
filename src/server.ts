@@ -8,7 +8,7 @@ import {
   type ToolResult,
   workflowOrError,
 } from "./context.ts";
-import { notInHerdrError } from "./errors.ts";
+import { notInHerdrError, HerdrBinError } from "./errors.ts";
 import { isInHerdr } from "./herdr-env.ts";
 import type { HerdrClient } from "./herdr/client.ts";
 import { NoArgs, toMcpInputSchema } from "./mcp-schema.ts";
@@ -20,6 +20,11 @@ import {
 import { HandoffInputSchema, handleHandoff, type HandoffInput } from "./tools/handoff.ts";
 import { handlePeers } from "./tools/peers.ts";
 import { ReadInputSchema, handleRead, type ReadInput } from "./tools/read.ts";
+import {
+  PaneReadInputSchema,
+  handlePaneRead,
+  type PaneReadInput,
+} from "./tools/pane_read.ts";
 import { WaitInputSchema, handleWait, type WaitInput } from "./tools/wait.ts";
 import { handleWhoami, handleWorkflow } from "./tools/whoami.ts";
 import type { WorkflowLoadResult } from "./workflow/loader.ts";
@@ -31,6 +36,7 @@ const BASE_TOOLS = [
   "handoff",
   "wait",
   "read",
+  "pane_read",
 ] as const;
 
 export type HerdrMcpOptions = {
@@ -50,7 +56,12 @@ function guardNoArgs(
     if (isToolResult(workflow)) return workflow;
     const ids = requireHerdr(ctx);
     if (isToolResult(ids)) return ids;
-    return await handler();
+    try {
+      return await handler();
+    } catch (error) {
+      if (error instanceof HerdrBinError) return errorResult(error);
+      throw error;
+    }
   };
 }
 
@@ -64,7 +75,12 @@ function guardTool<T>(
     if (isToolResult(workflow)) return workflow;
     const ids = requireHerdr(ctx);
     if (isToolResult(ids)) return ids;
-    return await handler(args as T);
+    try {
+      return await handler(args as T);
+    } catch (error) {
+      if (error instanceof HerdrBinError) return errorResult(error);
+      throw error;
+    }
   };
 }
 
@@ -147,6 +163,16 @@ export function registerHerdrTools(
       inputSchema: ReadInputSchema,
     },
     guardTool<ReadInput>(ctx, (args) => handleRead(ctx, args)),
+  );
+
+  server.registerTool(
+    "pane_read",
+    {
+      description:
+        "Read any pane snapshot in the current workspace, including non-agent shells (fish, logs, git).",
+      inputSchema: PaneReadInputSchema,
+    },
+    guardTool<PaneReadInput>(ctx, (args) => handlePaneRead(ctx, args)),
   );
 
   if (ctx.workflowResult.ok) {

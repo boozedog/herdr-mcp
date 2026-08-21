@@ -5,6 +5,8 @@ import { handleHandoff } from "./tools/handoff.ts";
 import { handleWait } from "./tools/wait.ts";
 import { handlePeers } from "./tools/peers.ts";
 import { handleDirectionalEdge } from "./tools/directional.ts";
+import { handlePaneRead } from "./tools/pane_read.ts";
+import { handleRead } from "./tools/read.ts";
 import { handleWhoami } from "./tools/whoami.ts";
 import { computeToolNames } from "./server.ts";
 import { loadWorkflowFromFile } from "./workflow/loader.ts";
@@ -302,4 +304,82 @@ Deno.test("tools: two-role whoami", async () => {
   assertEquals(result.structuredContent?.role, "plan");
   const edges = result.structuredContent?.edges as { id: string }[];
   assertEquals(edges[0]?.id, "plan_to_do");
+});
+
+Deno.test("tools: pane_read by tab_label with single pane", async () => {
+  const herdr = mockWorkspace();
+  herdr.tabs.push({ tab_id: "wQ:t4", workspace_id: "wQ", label: "fish" });
+  herdr.panes.push({
+    pane_id: "wQ:p4",
+    tab_id: "wQ:t4",
+    workspace_id: "wQ",
+    agent_status: "unknown",
+  });
+  herdr.paneReadResponses.set("wQ:p4", "fish shell output");
+  const ctx = createServerContext(HERDR_ENV, herdr);
+  const result = await handlePaneRead(ctx, { tab_label: "fish" });
+  assertEquals(result.isError, undefined);
+  assertEquals(result.structuredContent?.pane_id, "wQ:p4");
+  assertEquals(result.structuredContent?.tab_label, "fish");
+  assertEquals(result.structuredContent?.transcript, "fish shell output");
+  assertEquals(herdr.paneReadCalls.length, 1);
+  assertEquals(herdr.paneReadCalls[0]?.target, "wQ:p4");
+  assertEquals(herdr.paneReadCalls[0]?.source, "recent-unwrapped");
+});
+
+Deno.test("tools: pane_read ambiguous tab_label", async () => {
+  const herdr = mockWorkspace();
+  herdr.tabs.push({ tab_id: "wQ:t4", workspace_id: "wQ", label: "split" });
+  herdr.panes.push({
+    pane_id: "wQ:p4",
+    tab_id: "wQ:t4",
+    workspace_id: "wQ",
+    agent_status: "unknown",
+  });
+  herdr.panes.push({
+    pane_id: "wQ:p5",
+    tab_id: "wQ:t4",
+    workspace_id: "wQ",
+    agent_status: "unknown",
+  });
+  const ctx = createServerContext(HERDR_ENV, herdr);
+  const result = await handlePaneRead(ctx, { tab_label: "split" });
+  assertEquals(result.structuredContent?._tag, "ambiguous_target");
+});
+
+Deno.test("tools: pane_read unknown tab_label", async () => {
+  const herdr = mockWorkspace();
+  const ctx = createServerContext(HERDR_ENV, herdr);
+  const result = await handlePaneRead(ctx, { tab_label: "missing" });
+  assertEquals(result.structuredContent?._tag, "unknown_target");
+});
+
+Deno.test("tools: pane_read foreign pane_id", async () => {
+  const herdr = mockWorkspace();
+  const ctx = createServerContext(HERDR_ENV, herdr);
+  const result = await handlePaneRead(ctx, { pane_id: "wX:p9" });
+  assertEquals(result.structuredContent?._tag, "unknown_target");
+});
+
+Deno.test("tools: pane_read shell pane does not use agentRead", async () => {
+  const herdr = mockWorkspace();
+  herdr.panes.push({
+    pane_id: "wQ:p4",
+    tab_id: "wQ:t1",
+    workspace_id: "wQ",
+    agent_status: "unknown",
+  });
+  const ctx = createServerContext(HERDR_ENV, herdr);
+  await handlePaneRead(ctx, { pane_id: "wQ:p4" });
+  assertEquals(herdr.paneReadCalls.length, 1);
+  assertEquals(herdr.readResponses.size, 0);
+});
+
+Deno.test("tools: read still uses agentRead", async () => {
+  const herdr = mockWorkspace();
+  herdr.readResponses.set("impl", "agent transcript");
+  const ctx = createServerContext(HERDR_ENV, herdr);
+  const result = await handleRead(ctx, { role: "impl" });
+  assertEquals(result.structuredContent?.transcript, "agent transcript");
+  assertEquals(herdr.paneReadCalls.length, 0);
 });
