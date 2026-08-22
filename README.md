@@ -6,7 +6,7 @@ This repository implements the stdio MCP surface described in [issue #1](https:/
 
 ## Requirements
 
-- [Deno](https://deno.com/) 2.x (development, `deno task install`, and Nix wrapper only — not required for the Homebrew install)
+- [Deno](https://deno.com/) 2.x (development, `deno task install`, and the Nix flake wrapper — not required for the Homebrew install)
 - [Herdr](https://github.com/boozedog/herdr) **0.8+** on `PATH` (for live coordination)
 - A Herdr pane with `HERDR_ENV=1` when you want tools to call into Herdr (see [Environment](#environment))
 
@@ -74,7 +74,7 @@ nix run github:boozedog/herdr-mcp
 nix build github:boozedog/herdr-mcp
 ```
 
-From a clone, `nix build` produces `./result/bin/herdr-mcp`. The wrapper seeds a writable Deno cache under `$XDG_CACHE_HOME/herdr-mcp` (or `~/.cache/herdr-mcp`) and runs `deno run --cached-only -A` against the store-copied source. `-A` matches the non-Nix install path and allows env, subprocess (`herdr`), and cache read/write.
+From a clone, `nix build` produces `./result/bin/herdr-mcp`, a wrapper around nixpkgs `deno` that runs the vendored source with `--cached-only --frozen --vendor`. Dependencies are installed via [deno2nix](https://github.com/hzrd149/deno2nix) `mkDenoDeps`; the wrapper uses the store `deno` binary (Nix glibc), so it runs on NixOS without nix-ld or `/lib64`.
 
 For development without installing Deno globally:
 
@@ -84,7 +84,14 @@ deno task check
 deno task test
 ```
 
-**Refreshing the Deno cache hash:** after bumping `deno.lock`, set `outputHash` in `flake.nix` to a placeholder (e.g. `sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=`), run `nix build`, and copy the `got:` hash from the mismatch error into `outputHash`. The FOD prefetches all Linux `msgpackr-extract` optional deps so one hash serves both `x86_64-linux` and `aarch64-linux`.
+**Refreshing the dependency hash:** the flake uses deno2nix `mkDenoDeps` (a deterministic fixed-output derivation with normalized JSR metadata — unlike raw `deno cache`). One `denoDepsHash` in `flake.nix` serves both `x86_64-linux` and `aarch64-linux` because all Linux `msgpackr-extract` optional deps are prefetched.
+
+After changing `deno.lock`, dependencies, or entrypoint-relevant source:
+
+1. On `x86_64-linux`, set `denoDepsHash` in `flake.nix` to a placeholder (`sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=`).
+2. Run `nix build .#herdr-mcp-deno-deps`.
+3. Copy the `got:` hash from the mismatch error into `denoDepsHash`.
+4. Rebuild `.#herdr-mcp` to confirm.
 
 ## MCP client configuration
 

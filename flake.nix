@@ -3,77 +3,65 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    deno2nix.url = "github:hzrd149/deno2nix";
+    deno2nix.inputs.nixpkgs.follows = "nixpkgs";
   };
 
-  outputs = { self, nixpkgs }:
+  outputs = { self, nixpkgs, deno2nix }:
     let
       systems = [ "x86_64-linux" "aarch64-linux" ];
       forAllSystems = f: nixpkgs.lib.genAttrs systems (system: f system);
+      version = "0.3.0";
 
-      # One Linux FOD for all supported systems. Prefetch every Linux
-      # msgpackr-extract optional dep so aarch64 does not need its own hash.
-      denoCache = nixpkgs.legacyPackages.x86_64-linux.stdenv.mkDerivation {
-        pname = "herdr-mcp-deno-cache";
-        version = "0.3.0";
-        src = ./.;
-        nativeBuildInputs = [ nixpkgs.legacyPackages.x86_64-linux.deno ];
-        buildPhase = ''
-          export DENO_DIR=$out
-          deno cache --lock=deno.lock src/main.ts
-          deno cache \
-            npm:@msgpackr-extract/msgpackr-extract-linux-x64@3.0.4 \
-            npm:@msgpackr-extract/msgpackr-extract-linux-arm64@3.0.4 \
-            npm:@msgpackr-extract/msgpackr-extract-linux-arm@3.0.4
-        '';
-        installPhase = "true";
-        outputHash = "sha256-B5tdC4IuH5IGhxNBKCfkgA3aGETYOgoU+VS9dor/OPo=";
-        outputHashAlgo = "sha256";
-        outputHashMode = "recursive";
+      msgpackrPrefetch = [
+        "npm:@msgpackr-extract/msgpackr-extract-linux-x64@3.0.4"
+        "npm:@msgpackr-extract/msgpackr-extract-linux-arm64@3.0.4"
+        "npm:@msgpackr-extract/msgpackr-extract-linux-arm@3.0.4"
+      ];
+
+      # FOD hash for deno2nix `mkDenoDeps` (shared across Linux arches when all
+      # msgpackr-extract variants are prefetched). Refresh per README.
+      denoDepsHash = "sha256-9roRpRg26WGeBsMWSvOHkr/9SOsTvO5ke6kqE+8k580=";
+
+      # Build dependency FOD on x86_64-linux so hashes can be refreshed from one
+      # host (vendor includes all Linux msgpackr-extract variants).
+      linuxPkgs = import nixpkgs {
+        system = "x86_64-linux";
+        overlays = [ deno2nix.overlays.default ];
+      };
+      denoDeps = linuxPkgs.mkDenoDeps {
+        pname = "herdr-mcp";
+        inherit version;
+        src = self;
+        entrypoint = "src/main.ts";
+        hash = denoDepsHash;
+        installFlags = msgpackrPrefetch;
       };
     in
     {
       packages = forAllSystems (system:
         let
-          pkgs = nixpkgs.legacyPackages.${system};
-          deno = pkgs.deno;
-          src = ./.;
-
-          # Ship `deno run --cached-only` from a store path. The wrapper seeds a
-          # writable user cache and runs the source with permissions needed for
-          # env, subprocess (`herdr`), and Deno cache read/write (-A).
-          herdr-mcp = pkgs.stdenv.mkDerivation {
-            pname = "herdr-mcp";
-            version = "0.3.0";
-            inherit src;
-            nativeBuildInputs = [ deno ];
-            installPhase = ''
-              mkdir -p $out/bin $out/lib
-              cp -r ${denoCache} $out/lib/deno-cache
-              cp -r src $out/lib/src
-              cp deno.json deno.lock $out/lib/
-              cat > $out/bin/herdr-mcp <<EOF
-              #!${pkgs.stdenv.shell}
-              # DENO_DIR must be writable (Deno writes a V8 code cache there).
-              CACHE_DIR="\$HOME/.cache/herdr-mcp"
-              if [ -n "\$XDG_CACHE_HOME" ]; then
-                CACHE_DIR="\$XDG_CACHE_HOME/herdr-mcp"
-              fi
-              mkdir -p "\$CACHE_DIR"
-              if [ ! -e "\$CACHE_DIR/.seeded" ]; then
-                cp -r $out/lib/deno-cache/. "\$CACHE_DIR/" 2>/dev/null || true
-                touch "\$CACHE_DIR/.seeded"
-              fi
-              export DENO_DIR="\$CACHE_DIR"
-              exec ${deno}/bin/deno run --cached-only -A \
-                $out/lib/src/main.ts "\$@"
-              EOF
-              chmod +x $out/bin/herdr-mcp
-            '';
+          pkgs = import nixpkgs {
+            inherit system;
+            overlays = [ deno2nix.overlays.default ];
           };
         in
         {
-          herdr-mcp = herdr-mcp;
-          default = herdr-mcp;
+          herdr-mcp = pkgs.buildDenoApplication {
+            pname = "herdr-mcp";
+            inherit version;
+            src = self;
+            entrypoint = "src/main.ts";
+            inherit denoDeps;
+            deno = pkgs.deno;
+            # -A matches deno task dev/install: env, subprocess (herdr), cache.
+            # --vendor uses the deno2nix vendor/ tree (--cached-only alone hits JSR).
+            runFlags = [ "-A" "--vendor" ];
+            meta.mainProgram = "herdr-mcp";
+          };
+
+          herdr-mcp-deno-deps = denoDeps;
+          default = self.packages.${system}.herdr-mcp;
         });
 
       apps = forAllSystems (system:

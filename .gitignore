@@ -13,5 +13,9 @@ coverage/
 # Local compile output (deno task compile)
 /herdr-mcp
 
+# deno install --vendor / deno2nix local output (must not enter flake src)
+vendor/
+node_modules/
+
 # Nix build symlink
 /result

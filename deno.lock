@@ -9,6 +9,9 @@
     "jsr:@std/toml@*": "1.0.11",
     "jsr:@std/toml@1": "1.0.11",
     "npm:@modelcontextprotocol/server@2": "2.0.0",
+    "npm:@msgpackr-extract/msgpackr-extract-linux-arm64@3.0.4": "3.0.4",
+    "npm:@msgpackr-extract/msgpackr-extract-linux-arm@3.0.4": "3.0.4",
+    "npm:@msgpackr-extract/msgpackr-extract-linux-x64@3.0.4": "3.0.4",
     "npm:effect@4.0.0-rc.108": "4.0.0-rc.108"
   },
   "jsr": {
