@@ -222,7 +222,7 @@ export function createHerdrMcpServer(options: HerdrMcpOptions = {}): McpServer {
   }
 
   const server = new McpServer(
-    { name: "herdr-mcp", version: "0.2.0" },
+    { name: "herdr-mcp", version: "0.3.0" },
     { capabilities: { tools: {} } },
   );
   registerHerdrTools(server, options);

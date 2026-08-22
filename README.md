@@ -213,7 +213,7 @@ Tagged pushes matching `v*` trigger [`.github/workflows/release.yml`](.github/wo
 The job log prints the tarball SHA-256. Bump the Homebrew tap locally (same pattern as [smoovmux `scripts/release.sh`](https://github.com/boozedog/smoovmux/blob/main/scripts/release.sh)):
 
 ```bash
-VERSION=0.2.0
+VERSION=0.3.0
 SHA256=<from release workflow log>
 TAP=../homebrew-tap   # or your clone of boozedog/homebrew-tap
 FORMULA="$TAP/Formula/herdr-mcp.rb"

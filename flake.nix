@@ -14,7 +14,7 @@
       # msgpackr-extract optional dep so aarch64 does not need its own hash.
       denoCache = nixpkgs.legacyPackages.x86_64-linux.stdenv.mkDerivation {
         pname = "herdr-mcp-deno-cache";
-        version = "0.2.0";
+        version = "0.3.0";
         src = ./.;
         nativeBuildInputs = [ nixpkgs.legacyPackages.x86_64-linux.deno ];
         buildPhase = ''
@@ -43,7 +43,7 @@
           # env, subprocess (`herdr`), and Deno cache read/write (-A).
           herdr-mcp = pkgs.stdenv.mkDerivation {
             pname = "herdr-mcp";
-            version = "0.2.0";
+            version = "0.3.0";
             inherit src;
             nativeBuildInputs = [ deno ];
             installPhase = ''
