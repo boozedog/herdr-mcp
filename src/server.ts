@@ -30,6 +30,7 @@ import {
   type PaneRunInput,
 } from "./tools/pane_run.ts";
 import { handleWhoami, handleWorkflow } from "./tools/whoami.ts";
+import { generateInstructions } from "./workflow/instructions.ts";
 import type { WorkflowLoadResult } from "./workflow/loader.ts";
 
 const BASE_TOOLS = [
@@ -101,8 +102,9 @@ export function computeToolNames(result: WorkflowLoadResult): string[] {
 export function registerHerdrTools(
   server: McpServer,
   options: HerdrMcpOptions = {},
+  existingCtx?: ServerContext,
 ): string[] {
-  const ctx = createServerContext(
+  const ctx = existingCtx ?? createServerContext(
     options.env ?? Deno.env.toObject(),
     options.herdr,
     options.cwd,
@@ -200,9 +202,12 @@ export function createHerdrMcpServer(options: HerdrMcpOptions = {}): McpServer {
 
   const server = new McpServer(
     { name: "herdr-mcp", version: "0.3.0" },
-    { capabilities: { tools: {} } },
+    {
+      capabilities: { tools: {} },
+      instructions: generateInstructions(ctx.workflowResult),
+    },
   );
-  registerHerdrTools(server, options);
+  registerHerdrTools(server, options, ctx);
   return server;
 }
 

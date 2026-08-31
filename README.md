@@ -132,6 +132,8 @@ For local development without installing, point `command` at Deno instead:
 
 Replace `/path/to/herdr-mcp` with your clone path. Prefer `command = "herdr-mcp"` after `deno task install`.
 
+On MCP `initialize`, the server returns `instructions` generated from the loaded workflow (roles, directional edges, round metadata). Clients that inject server instructions (e.g. Codex) see protocol usage there; tool descriptions stay accurate when a client ignores `instructions`.
+
 ## Run (development)
 
 Stdio MCP server without installing:

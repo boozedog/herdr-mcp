@@ -84,6 +84,7 @@ async function withStdioServer(
 
 async function initAndList(env: Record<string, string>) {
   const tools: string[] = [];
+  let instructions: string | undefined;
   await withStdioServer(env, async ({ write, read }) => {
     await write({
       jsonrpc: "2.0",
@@ -95,18 +96,19 @@ async function initAndList(env: Record<string, string>) {
         clientInfo: { name: "herdr-mcp-test", version: "0.0.0" },
       },
     });
-    await read();
+    const initialized = await read();
+    instructions = (initialized.result as { instructions?: string }).instructions;
     await write({ jsonrpc: "2.0", method: "notifications/initialized" });
     await write({ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} });
     const listed = await read();
     const list = (listed.result as { tools: { name: string }[] }).tools;
     tools.push(...list.map((t) => t.name));
   });
-  return tools;
+  return { tools, instructions };
 }
 
 Deno.test("stdio: lists preset tools without HERDR_ENV", async () => {
-  const tools = await initAndList({});
+  const { tools } = await initAndList({});
   for (const name of [
     "whoami",
     "workflow",
@@ -127,7 +129,7 @@ Deno.test("stdio: lists preset tools without HERDR_ENV", async () => {
 });
 
 Deno.test("stdio: two-role fixture lists plan_to_do only", async () => {
-  const tools = await initAndList({
+  const { tools } = await initAndList({
     HERDR_MCP_CONFIG: join(FIXTURES, "two-role.toml"),
   });
   assertEquals(tools.includes("plan_to_do"), true);
@@ -135,11 +137,29 @@ Deno.test("stdio: two-role fixture lists plan_to_do only", async () => {
 });
 
 Deno.test("stdio: bad config lists base tools only", async () => {
-  const tools = await initAndList({
+  const { tools } = await initAndList({
     HERDR_MCP_CONFIG: join(FIXTURES, "bad-config.toml"),
   });
   assertEquals(tools.includes("whoami"), true);
   assertEquals(tools.includes("research_to_impl"), false);
+});
+
+Deno.test("stdio: initialize includes instructions from loaded workflow", async () => {
+  const preset = await initAndList({});
+  assertEquals(typeof preset.instructions, "string");
+  assertEquals(preset.instructions!.includes("fire-and-forget"), true);
+  assertEquals(preset.instructions!.includes("impl_to_review"), true);
+
+  const twoRole = await initAndList({
+    HERDR_MCP_CONFIG: join(FIXTURES, "two-role.toml"),
+  });
+  assertEquals(twoRole.instructions!.includes("plan_to_do"), true);
+  assertEquals(twoRole.instructions!.includes("review"), false);
+
+  const bad = await initAndList({
+    HERDR_MCP_CONFIG: join(FIXTURES, "bad-config.toml"),
+  });
+  assertEquals(bad.instructions!.toLowerCase().includes("invalid"), true);
 });
 
 Deno.test("stdio: every tool returns not_in_herdr without HERDR_ENV", async () => {
