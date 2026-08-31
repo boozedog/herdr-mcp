@@ -2,12 +2,10 @@ import { assertEquals, assertExists } from "@std/assert";
 import { createServerContext, resolveByPaneId, resolveTarget } from "./context.ts";
 import { MockHerdrClient } from "./herdr/client.ts";
 import { handleHandoff } from "./tools/handoff.ts";
-import { handleWait } from "./tools/wait.ts";
 import { handlePeers } from "./tools/peers.ts";
 import { handleDirectionalEdge } from "./tools/directional.ts";
 import { handlePaneRead } from "./tools/pane_read.ts";
 import { handlePaneRun } from "./tools/pane_run.ts";
-import { handleRead } from "./tools/read.ts";
 import { handleWhoami } from "./tools/whoami.ts";
 import { computeToolNames } from "./server.ts";
 import { loadWorkflowFromFile } from "./workflow/loader.ts";
@@ -70,7 +68,7 @@ function mockWorkspace() {
   return herdr;
 }
 
-Deno.test("tools: default preset tool names", () => {
+Deno.test("tools: default preset tool names excludes read and wait", () => {
   const names = computeToolNames({
     ok: true,
     workflow: normalizeWorkflow(RESEARCH_IMPL_REVIEW_PRESET, "research-impl-review", null),
@@ -80,6 +78,10 @@ Deno.test("tools: default preset tool names", () => {
   assertEquals(names.includes("research_to_impl"), true);
   assertEquals(names.includes("impl_to_review"), true);
   assertEquals(names.includes("review_to_impl"), true);
+  assertEquals(names.includes("read"), false);
+  assertEquals(names.includes("wait"), false);
+  assertEquals(names.includes("agent_read"), false);
+  assertEquals(names.includes("agent_wait"), false);
 });
 
 Deno.test("tools: two-role fixture tool names", () => {
@@ -135,27 +137,22 @@ Deno.test("tools: handoff unknown edge", async () => {
   assertEquals(result.structuredContent?._tag, "unknown_edge");
 });
 
-Deno.test("tools: wait stalls from idle without lifecycle change", async () => {
+Deno.test("tools: directional wait edge is handoff-only", async () => {
   const herdr = mockWorkspace();
-  const ctx = createServerContext(HERDR_ENV, herdr);
-  const result = await handleWait(ctx, {
-    role: "impl",
-    timeout_ms: 100,
-  });
-  assertEquals(result.structuredContent?._tag, "prompt_stalled");
-});
-
-Deno.test("tools: wait maps timeout JSON error", async () => {
-  const herdr = mockWorkspace();
-  herdr.waitResponses.set("impl", {
-    stdout: '{"error":{"code":"timeout","message":"timed out"},"id":"cli:agent:wait"}',
-    exitCode: 1,
-  });
-  const ctx = createServerContext(HERDR_ENV, herdr);
-  // Seed working so stall gate is skipped
-  herdr.panes.find((p) => p.pane_id === "wQ:p2")!.agent_status = "working";
-  const result = await handleWait(ctx, { role: "impl", timeout_ms: 100 });
-  assertEquals(result.structuredContent?._tag, "parse_failed");
+  const ctx = createServerContext(
+    { ...HERDR_ENV, HERDR_TAB_ID: "wQ:t2", HERDR_PANE_ID: "wQ:p2" },
+    herdr,
+  );
+  const wf = ctx.workflowResult.ok ? ctx.workflowResult.workflow : null;
+  assertExists(wf);
+  const edge = wf.edges.find((e) => e.id === "impl_to_review")!;
+  assertEquals(edge.wait, true);
+  const result = await handleDirectionalEdge(ctx, edge, { message: "review me" });
+  assertEquals(result.isError, undefined);
+  assertEquals(herdr.prompts.length, 1);
+  assertEquals(result.structuredContent?.pane_id, "wQ:p3");
+  assertEquals(result.structuredContent?.wait, undefined);
+  assertEquals(result.structuredContent?.read, undefined);
 });
 
 Deno.test("tools: busy_peer on working target", async () => {
@@ -376,16 +373,43 @@ Deno.test("tools: pane_read shell pane does not use agentRead", async () => {
   assertEquals(herdr.readResponses.size, 0);
 });
 
-Deno.test("tools: read still uses agentRead", async () => {
+Deno.test("tools: pane_read works on agent panes", async () => {
   const herdr = mockWorkspace();
-  herdr.readResponses.set("impl", "agent transcript");
+  herdr.paneReadResponses.set("wQ:p2", "agent tui snapshot");
   const ctx = createServerContext(HERDR_ENV, herdr);
-  const result = await handleRead(ctx, { role: "impl" });
-  assertEquals(result.structuredContent?.transcript, "agent transcript");
-  assertEquals(herdr.paneReadCalls.length, 0);
+  const result = await handlePaneRead(ctx, { pane_id: "wQ:p2" });
+  assertEquals(result.isError, undefined);
+  assertEquals(result.structuredContent?.transcript, "agent tui snapshot");
+  assertEquals(herdr.paneReadCalls.length, 1);
 });
 
-Deno.test("tools: pane_run by tab_label with single pane", async () => {
+Deno.test("tools: pane_run refuses agent pane by name", async () => {
+  const herdr = mockWorkspace();
+  const ctx = createServerContext(HERDR_ENV, herdr);
+  const result = await handlePaneRun(ctx, { pane_id: "wQ:p2", command: "ls" });
+  assertEquals(result.structuredContent?._tag, "agent_pane");
+  assertEquals(result.structuredContent?.pane_id, "wQ:p2");
+  assertEquals(result.structuredContent?.tab_label, "impl");
+  assertEquals(result.structuredContent?.agent_name, "impl");
+  assertEquals(result.structuredContent?.agent_status, "idle");
+  assertEquals(herdr.paneRunCalls.length, 0);
+});
+
+Deno.test("tools: pane_run refuses agent pane by lifecycle status", async () => {
+  const herdr = mockWorkspace();
+  herdr.panes.push({
+    pane_id: "wQ:p7",
+    tab_id: "wQ:t1",
+    workspace_id: "wQ",
+    agent_status: "working",
+  });
+  const ctx = createServerContext(HERDR_ENV, herdr);
+  const result = await handlePaneRun(ctx, { pane_id: "wQ:p7", command: "ls" });
+  assertEquals(result.structuredContent?._tag, "agent_pane");
+  assertEquals(herdr.paneRunCalls.length, 0);
+});
+
+Deno.test("tools: pane_run allows unknown status without agent name", async () => {
   const herdr = mockWorkspace();
   herdr.tabs.push({ tab_id: "wQ:t4", workspace_id: "wQ", label: "fish" });
   herdr.panes.push({

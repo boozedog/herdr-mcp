@@ -9,9 +9,22 @@ import {
   successResult,
   workflowOrError,
 } from "../context.ts";
-import { ParseFailed } from "../errors.ts";
-import { extractHerdrCliError, parsePromptOutput } from "../parse.ts";
+import { AgentPane, ParseFailed } from "../errors.ts";
+import type { HerdrPane } from "../herdr/client.ts";
+import { extractHerdrCliError, parsePromptOutput, type AgentStatus } from "../parse.ts";
 import { toMcpInputSchema } from "../mcp-schema.ts";
+
+const AGENT_STATUSES = new Set<AgentStatus>(["idle", "working", "blocked", "done"]);
+
+function agentPaneName(pane: HerdrPane): string | undefined {
+  const name = pane.agent ?? pane.name;
+  return name && name.length > 0 ? name : undefined;
+}
+
+export function isAgentPane(pane: HerdrPane): boolean {
+  if (agentPaneName(pane) !== undefined) return true;
+  return AGENT_STATUSES.has(pane.agent_status);
+}
 
 export const PaneRunArgs = Schema.Struct({
   pane_id: Schema.optional(Schema.String),
@@ -42,7 +55,20 @@ export async function handlePaneRun(
   );
   if ("_tag" in resolved) return errorResult(resolved);
 
+  const pane = callerCtx.panes.find((p) => p.pane_id === resolved.pane_id);
   const tab = callerCtx.tabs.find((t) => t.tab_id === resolved.tab_id);
+  const tabLabel = tab?.label ?? "unknown";
+
+  if (pane && isAgentPane(pane)) {
+    return errorResult(new AgentPane({
+      message: "Target pane hosts a coding agent. Use handoff or a directional tool instead of pane_run.",
+      pane_id: resolved.pane_id,
+      tab_label: tabLabel,
+      agent_name: agentPaneName(pane),
+      agent_status: pane.agent_status,
+    }));
+  }
+
   const run = await ctx.herdr.paneRun(resolved.pane_id, input.command);
   const parsed = parsePromptOutput(run.stdout, run.exitCode);
   if (parsed.kind === "error") return errorResult(parsed.error);
@@ -59,7 +85,7 @@ export async function handlePaneRun(
   return successResult({
     pane_id: resolved.pane_id,
     tab_id: resolved.tab_id,
-    tab_label: tab?.label ?? "unknown",
+    tab_label: tabLabel,
     command: input.command,
     accepted,
     raw_stdout: run.stdout.slice(0, 500),

@@ -56,6 +56,14 @@ export class AmbiguousTarget extends Schema.TaggedError<AmbiguousTarget>()("ambi
   pane_ids: Schema.Array(Schema.String),
 }) {}
 
+export class AgentPane extends Schema.TaggedError<AgentPane>()("agent_pane", {
+  message: Schema.String,
+  pane_id: Schema.String,
+  tab_label: Schema.String,
+  agent_name: Schema.optional(Schema.String),
+  agent_status: Schema.String,
+}) {}
+
 export class HerdrBinError extends Schema.TaggedError<HerdrBinError>()("herdr_bin_error", {
   message: Schema.String,
   path: Schema.String,
@@ -72,6 +80,7 @@ export type HerdrMcpError =
   | ParseFailed
   | ConfirmationError
   | AmbiguousTarget
+  | AgentPane
   | HerdrBinError;
 
 export const NOT_IN_HERDR_MESSAGE =
@@ -92,6 +101,7 @@ const encoders = {
   parse_failed: Schema.encodeUnknownSync(ParseFailed),
   confirmation_error: Schema.encodeUnknownSync(ConfirmationError),
   ambiguous_target: Schema.encodeUnknownSync(AmbiguousTarget),
+  agent_pane: Schema.encodeUnknownSync(AgentPane),
   herdr_bin_error: Schema.encodeUnknownSync(HerdrBinError),
 } as const;
 

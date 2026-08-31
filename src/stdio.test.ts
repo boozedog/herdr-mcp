@@ -112,8 +112,6 @@ Deno.test("stdio: lists preset tools without HERDR_ENV", async () => {
     "workflow",
     "peers",
     "handoff",
-    "wait",
-    "read",
     "pane_read",
     "pane_run",
     "research_to_impl",
@@ -122,6 +120,10 @@ Deno.test("stdio: lists preset tools without HERDR_ENV", async () => {
   ]) {
     assertEquals(tools.includes(name), true, `missing ${name}`);
   }
+  assertEquals(tools.includes("read"), false);
+  assertEquals(tools.includes("wait"), false);
+  assertEquals(tools.includes("agent_read"), false);
+  assertEquals(tools.includes("agent_wait"), false);
 });
 
 Deno.test("stdio: two-role fixture lists plan_to_do only", async () => {
@@ -146,8 +148,8 @@ Deno.test("stdio: every tool returns not_in_herdr without HERDR_ENV", async () =
     "workflow",
     "peers",
     "handoff",
-    "wait",
-    "read",
+    "pane_read",
+    "pane_run",
     "research_to_impl",
   ];
   await withStdioServer({}, async ({ write, read }) => {
@@ -174,6 +176,10 @@ Deno.test("stdio: every tool returns not_in_herdr without HERDR_ENV", async () =
           name,
           arguments: name === "handoff" || name.includes("_to_")
             ? { message: "test" }
+            : name === "pane_read"
+            ? { pane_id: "wQ:p1" }
+            : name === "pane_run"
+            ? { pane_id: "wQ:p1", command: "ls" }
             : {},
         },
       });

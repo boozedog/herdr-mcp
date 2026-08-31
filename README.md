@@ -178,17 +178,15 @@ Always registered:
 | `workflow` | Dump loaded workflow name, roles, edges, and config path |
 | `peers` | Tabs and panes in the current `HERDR_WORKSPACE_ID` only |
 | `handoff` | Submit a message (fire-and-forget with revision/seq confirmation); does not wait |
-| `wait` | Wait until a peer reaches `idle`, `done`, or `blocked` |
-| `read` | Agent transcript only (`agent read --source recent-unwrapped`) |
-| `pane_read` | Any pane snapshot, including non-agent shells (`pane read`; use `tab_label` or `pane_id`) |
-| `pane_run` | Submit a command to any pane, including non-agent shells (`pane run`; pair with `pane_read` to inspect output) |
+| `pane_read` | Any pane snapshot, including agent TUIs and non-agent shells (`pane read`; use `tab_label` or `pane_id`) |
+| `pane_run` | Submit a command to a **non-agent shell pane** only (`pane run`; pair with `pane_read` to inspect output). Refuses panes that host a coding agent (`agent_pane` error) — use `handoff` or a directional tool instead |
 
 With the default preset, these directional tools are also registered (`edge.tool = true` in config):
 
 | Tool | From | To | Wait |
 | --- | --- | --- | --- |
 | `research_to_impl` | research* | paired impl | no |
-| `impl_to_review` | impl* | paired review | yes (handoff + wait + read) |
+| `impl_to_review` | impl* | paired review | handoff only (config `wait` ignored until [#15](https://github.com/boozedog/herdr-mcp/issues/15)) |
 | `review_to_impl` | review* | paired impl | no |
 
 Custom configs may register different `{edge.id}` tools or set `tool = false` and use `handoff { edge = "..." }` instead.

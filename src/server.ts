@@ -19,7 +19,6 @@ import {
 } from "./tools/directional.ts";
 import { HandoffInputSchema, handleHandoff, type HandoffInput } from "./tools/handoff.ts";
 import { handlePeers } from "./tools/peers.ts";
-import { ReadInputSchema, handleRead, type ReadInput } from "./tools/read.ts";
 import {
   PaneReadInputSchema,
   handlePaneRead,
@@ -30,7 +29,6 @@ import {
   handlePaneRun,
   type PaneRunInput,
 } from "./tools/pane_run.ts";
-import { WaitInputSchema, handleWait, type WaitInput } from "./tools/wait.ts";
 import { handleWhoami, handleWorkflow } from "./tools/whoami.ts";
 import type { WorkflowLoadResult } from "./workflow/loader.ts";
 
@@ -39,8 +37,6 @@ const BASE_TOOLS = [
   "workflow",
   "peers",
   "handoff",
-  "wait",
-  "read",
   "pane_read",
   "pane_run",
 ] as const;
@@ -154,24 +150,6 @@ export function registerHerdrTools(
   );
 
   server.registerTool(
-    "wait",
-    {
-      description: "Wait until a peer reaches idle, done, or blocked.",
-      inputSchema: WaitInputSchema,
-    },
-    guardTool<WaitInput>(ctx, (args) => handleWait(ctx, args)),
-  );
-
-  server.registerTool(
-    "read",
-    {
-      description: "Read recent-unwrapped agent transcript.",
-      inputSchema: ReadInputSchema,
-    },
-    guardTool<ReadInput>(ctx, (args) => handleRead(ctx, args)),
-  );
-
-  server.registerTool(
     "pane_read",
     {
       description:
@@ -185,7 +163,7 @@ export function registerHerdrTools(
     "pane_run",
     {
       description:
-        "Submit a command to any pane in the current workspace, including non-agent shells (fish, git, logs). Pair with pane_read to inspect output.",
+        "Submit a command to a non-agent shell pane (fish, git, logs). Refuses agent panes with agent_pane — use handoff or a directional tool instead. Pair with pane_read to inspect output.",
       inputSchema: PaneRunInputSchema,
     },
     guardTool<PaneRunInput>(ctx, (args) => handlePaneRun(ctx, args)),
@@ -198,8 +176,7 @@ export function registerHerdrTools(
       server.registerTool(
         edge.id,
         {
-          description:
-            `Directional handoff from ${edge.from} to ${edge.to}${edge.wait ? " (wait+read)" : ""}.`,
+          description: `Directional handoff from ${edge.from} to ${edge.to}.`,
           inputSchema: DirectionalInputSchema,
         },
         guardTool<DirectionalInput>(ctx, (args) => handleDirectionalEdge(ctx, edgeCopy, args)),
