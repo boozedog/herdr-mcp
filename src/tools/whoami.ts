@@ -47,8 +47,8 @@ export function handleWorkflow(ctx: ServerContext): ToolResult {
       id: e.id,
       from: e.from,
       to: e.to,
-      wait: e.wait,
       tool: e.tool ?? false,
+      ...(e.round !== undefined ? { round: e.round } : {}),
     })),
   });
 }

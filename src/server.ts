@@ -13,9 +13,9 @@ import { isInHerdr } from "./herdr-env.ts";
 import type { HerdrClient } from "./herdr/client.ts";
 import { NoArgs, toMcpInputSchema } from "./mcp-schema.ts";
 import {
-  DirectionalInputSchema,
+  DirectionalInput,
+  buildDirectionalInputSchema,
   handleDirectionalEdge,
-  type DirectionalInput,
 } from "./tools/directional.ts";
 import { HandoffInputSchema, handleHandoff, type HandoffInput } from "./tools/handoff.ts";
 import { handlePeers } from "./tools/peers.ts";
@@ -177,7 +177,7 @@ export function registerHerdrTools(
         edge.id,
         {
           description: `Directional handoff from ${edge.from} to ${edge.to}.`,
-          inputSchema: DirectionalInputSchema,
+          inputSchema: buildDirectionalInputSchema(edge),
         },
         guardTool<DirectionalInput>(ctx, (args) => handleDirectionalEdge(ctx, edgeCopy, args)),
       );

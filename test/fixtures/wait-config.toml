@@ -1,0 +1,16 @@
+[[roles]]
+id = "research"
+match = "^research($|[0-9].*|-.*)"
+mutate = false
+
+[[roles]]
+id = "impl"
+match = "^impl($|[0-9].*|-.*)"
+mutate = true
+
+[[edges]]
+id = "research_to_impl"
+from = "research"
+to = "impl"
+wait = true
+tool = true

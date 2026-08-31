@@ -421,7 +421,7 @@ export function buildWhoamiEdges(
       return {
         id: edge.id,
         to: edge.to,
-        wait: edge.wait,
+        ...(edge.round !== undefined ? { round: edge.round } : {}),
         paired_pane_id,
       };
     });

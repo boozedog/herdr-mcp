@@ -181,13 +181,38 @@ Always registered:
 | `pane_read` | Any pane snapshot, including agent TUIs and non-agent shells (`pane read`; use `tab_label` or `pane_id`) |
 | `pane_run` | Submit a command to a **non-agent shell pane** only (`pane run`; pair with `pane_read` to inspect output). Refuses panes that host a coding agent (`agent_pane` error) — use `handoff` or a directional tool instead |
 
-With the default preset, these directional tools are also registered (`edge.tool = true` in config):
+With the default preset, these directional tools are also registered (`edge.tool = true` in config). All are **fire-and-forget** (same as `handoff`; no lifecycle wait or read).
 
-| Tool | From | To | Wait |
+| Tool | From | To | Round |
 | --- | --- | --- | --- |
-| `research_to_impl` | research* | paired impl | no |
-| `impl_to_review` | impl* | paired review | handoff only (config `wait` ignored until [#15](https://github.com/boozedog/herdr-mcp/issues/15)) |
-| `review_to_impl` | review* | paired impl | no |
+| `research_to_impl` | research* | paired impl | — |
+| `impl_to_review` | impl* | paired review | submit (server assigns round; optional `reset`, `max_rounds`) |
+| `review_to_impl` | review* | paired impl | respond (requires `round` + `status`: `APPROVED` \| `CHANGES_REQUESTED`) |
+
+Review-loop edges use in-process round counting (default cap **5** via `defaults.max_rounds`). When the cap is exceeded, `impl_to_review` returns `round_cap` and does not submit. Pass `reset: true` to start a new slice. Round state is not persisted — MCP restart clears counters.
+
+Example workflow config fragment:
+
+```toml
+[defaults]
+max_rounds = 5
+
+[[edges]]
+id = "impl_to_review"
+from = "impl"
+to = "review"
+tool = true
+round = "submit"
+
+[[edges]]
+id = "review_to_impl"
+from = "review"
+to = "impl"
+tool = true
+round = "respond"
+```
+
+The removed `wait` edge field is no longer valid; configs that still set it fail with `invalid_config`.
 
 Custom configs may register different `{edge.id}` tools or set `tool = false` and use `handoff { edge = "..." }` instead.
 

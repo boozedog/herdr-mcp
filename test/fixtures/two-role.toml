@@ -12,5 +12,4 @@ mutate = true
 id = "plan_to_do"
 from = "plan"
 to = "do"
-wait = false
 tool = true

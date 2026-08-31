@@ -1,9 +1,15 @@
 import { assertEquals, assertExists } from "@std/assert";
+import { Schema } from "effect";
 import { createServerContext, resolveByPaneId, resolveTarget } from "./context.ts";
 import { MockHerdrClient } from "./herdr/client.ts";
 import { handleHandoff } from "./tools/handoff.ts";
 import { handlePeers } from "./tools/peers.ts";
-import { handleDirectionalEdge } from "./tools/directional.ts";
+import {
+  handleDirectionalEdge,
+  buildDirectionalInputSchema,
+  RespondDirectionalArgs,
+} from "./tools/directional.ts";
+import { resetAllRoundCounters } from "./rounds.ts";
 import { handlePaneRead } from "./tools/pane_read.ts";
 import { handlePaneRun } from "./tools/pane_run.ts";
 import { handleWhoami } from "./tools/whoami.ts";
@@ -137,7 +143,8 @@ Deno.test("tools: handoff unknown edge", async () => {
   assertEquals(result.structuredContent?._tag, "unknown_edge");
 });
 
-Deno.test("tools: directional wait edge is handoff-only", async () => {
+Deno.test("tools: directional submit is fire-and-forget handoff", async () => {
+  resetAllRoundCounters();
   const herdr = mockWorkspace();
   const ctx = createServerContext(
     { ...HERDR_ENV, HERDR_TAB_ID: "wQ:t2", HERDR_PANE_ID: "wQ:p2" },
@@ -146,13 +153,194 @@ Deno.test("tools: directional wait edge is handoff-only", async () => {
   const wf = ctx.workflowResult.ok ? ctx.workflowResult.workflow : null;
   assertExists(wf);
   const edge = wf.edges.find((e) => e.id === "impl_to_review")!;
-  assertEquals(edge.wait, true);
+  assertEquals(edge.round, "submit");
   const result = await handleDirectionalEdge(ctx, edge, { message: "review me" });
   assertEquals(result.isError, undefined);
   assertEquals(herdr.prompts.length, 1);
   assertEquals(result.structuredContent?.pane_id, "wQ:p3");
+  assertEquals(result.structuredContent?.round, 1);
+  assertEquals(result.structuredContent?.max_rounds, 5);
   assertEquals(result.structuredContent?.wait, undefined);
   assertEquals(result.structuredContent?.read, undefined);
+  assertEquals(herdr.prompts[0]?.text.includes("## Round 1 / 5"), true);
+});
+
+Deno.test("tools: directional submit increments round and enforces cap", async () => {
+  resetAllRoundCounters();
+  const herdr = mockWorkspace();
+  const ctx = createServerContext(
+    { ...HERDR_ENV, HERDR_TAB_ID: "wQ:t2", HERDR_PANE_ID: "wQ:p2" },
+    herdr,
+  );
+  const wf = ctx.workflowResult.ok ? ctx.workflowResult.workflow : null;
+  assertExists(wf);
+  const edge = wf.edges.find((e) => e.id === "impl_to_review")!;
+  for (let i = 1; i <= 5; i++) {
+    const result = await handleDirectionalEdge(ctx, edge, { message: `round ${i}` });
+    assertEquals(result.isError, undefined);
+    assertEquals(result.structuredContent?.round, i);
+  }
+  const capped = await handleDirectionalEdge(ctx, edge, { message: "too many" });
+  assertEquals(capped.structuredContent?._tag, "round_cap");
+  assertEquals(capped.structuredContent?.round, 6);
+  assertEquals(capped.structuredContent?.max_rounds, 5);
+  assertEquals(capped.structuredContent?.pane_id, "wQ:p3");
+  assertEquals(herdr.prompts.length, 5);
+});
+
+Deno.test("tools: busy impl_to_review does not increment round counter", async () => {
+  resetAllRoundCounters();
+  const herdr = mockWorkspace();
+  herdr.panes.find((p) => p.pane_id === "wQ:p3")!.agent_status = "working";
+  const ctx = createServerContext(
+    { ...HERDR_ENV, HERDR_TAB_ID: "wQ:t2", HERDR_PANE_ID: "wQ:p2" },
+    herdr,
+  );
+  const wf = ctx.workflowResult.ok ? ctx.workflowResult.workflow : null;
+  assertExists(wf);
+  const edge = wf.edges.find((e) => e.id === "impl_to_review")!;
+  const busy = await handleDirectionalEdge(ctx, edge, { message: "review me" });
+  assertEquals(busy.structuredContent?._tag, "busy_peer");
+  assertEquals(herdr.prompts.length, 0);
+
+  herdr.panes.find((p) => p.pane_id === "wQ:p3")!.agent_status = "idle";
+  const ok = await handleDirectionalEdge(ctx, edge, { message: "review me" });
+  assertEquals(ok.isError, undefined);
+  assertEquals(ok.structuredContent?.round, 1);
+  assertEquals(herdr.prompts.length, 1);
+  assertEquals(herdr.prompts[0]?.text.includes("## Round 1 / 5"), true);
+});
+
+Deno.test("tools: repeated busy impl_to_review never returns round_cap", async () => {
+  resetAllRoundCounters();
+  const herdr = mockWorkspace();
+  herdr.panes.find((p) => p.pane_id === "wQ:p3")!.agent_status = "blocked";
+  const ctx = createServerContext(
+    { ...HERDR_ENV, HERDR_TAB_ID: "wQ:t2", HERDR_PANE_ID: "wQ:p2" },
+    herdr,
+  );
+  const wf = ctx.workflowResult.ok ? ctx.workflowResult.workflow : null;
+  assertExists(wf);
+  const edge = wf.edges.find((e) => e.id === "impl_to_review")!;
+  for (let i = 0; i < 6; i++) {
+    const result = await handleDirectionalEdge(ctx, edge, { message: `busy ${i}` });
+    assertEquals(result.structuredContent?._tag, "busy_peer");
+  }
+  assertEquals(herdr.prompts.length, 0);
+});
+
+Deno.test("tools: confirmation_error after prompt commits round", async () => {
+  resetAllRoundCounters();
+  const herdr = mockWorkspace();
+  let agentGetCalls = 0;
+  const origAgentGet = herdr.agentGet.bind(herdr);
+  herdr.agentGet = (target) => {
+    agentGetCalls++;
+    if (agentGetCalls > 1) return Promise.resolve("not json");
+    return origAgentGet(target);
+  };
+  herdr.failPaneGet = true;
+  const ctx = createServerContext(
+    { ...HERDR_ENV, HERDR_TAB_ID: "wQ:t2", HERDR_PANE_ID: "wQ:p2" },
+    herdr,
+  );
+  const wf = ctx.workflowResult.ok ? ctx.workflowResult.workflow : null;
+  assertExists(wf);
+  const edge = wf.edges.find((e) => e.id === "impl_to_review")!;
+  const first = await handleDirectionalEdge(ctx, edge, { message: "review me" });
+  assertEquals(first.structuredContent?._tag, "confirmation_error");
+  assertEquals(herdr.prompts.length, 1);
+
+  herdr.failPaneGet = false;
+  herdr.agentGet = origAgentGet;
+  const second = await handleDirectionalEdge(ctx, edge, { message: "review again" });
+  assertEquals(second.isError, undefined);
+  assertEquals(second.structuredContent?.round, 2);
+  assertEquals(herdr.prompts[1]?.text.includes("## Round 2 / 5"), true);
+});
+
+Deno.test("tools: directional submit reset starts new slice", async () => {
+  resetAllRoundCounters();
+  const herdr = mockWorkspace();
+  const ctx = createServerContext(
+    { ...HERDR_ENV, HERDR_TAB_ID: "wQ:t2", HERDR_PANE_ID: "wQ:p2" },
+    herdr,
+  );
+  const wf = ctx.workflowResult.ok ? ctx.workflowResult.workflow : null;
+  assertExists(wf);
+  const edge = wf.edges.find((e) => e.id === "impl_to_review")!;
+  await handleDirectionalEdge(ctx, edge, { message: "first" });
+  await handleDirectionalEdge(ctx, edge, { message: "second" });
+  const reset = await handleDirectionalEdge(ctx, edge, { message: "new slice", reset: true });
+  assertEquals(reset.structuredContent?.round, 1);
+});
+
+Deno.test("tools: directional submit max_rounds above config refused", async () => {
+  resetAllRoundCounters();
+  const herdr = mockWorkspace();
+  const ctx = createServerContext(
+    { ...HERDR_ENV, HERDR_TAB_ID: "wQ:t2", HERDR_PANE_ID: "wQ:p2" },
+    herdr,
+  );
+  const wf = ctx.workflowResult.ok ? ctx.workflowResult.workflow : null;
+  assertExists(wf);
+  const edge = wf.edges.find((e) => e.id === "impl_to_review")!;
+  const result = await handleDirectionalEdge(ctx, edge, {
+    message: "review me",
+    max_rounds: 99,
+  });
+  assertEquals(result.structuredContent?._tag, "invalid_config");
+  assertEquals(herdr.prompts.length, 0);
+});
+
+Deno.test("tools: review_to_impl respond stamps round and status", async () => {
+  const herdr = mockWorkspace();
+  const ctx = createServerContext(
+    { ...HERDR_ENV, HERDR_TAB_ID: "wQ:t3", HERDR_PANE_ID: "wQ:p3" },
+    herdr,
+  );
+  const wf = ctx.workflowResult.ok ? ctx.workflowResult.workflow : null;
+  assertExists(wf);
+  const edge = wf.edges.find((e) => e.id === "review_to_impl")!;
+  const result = await handleDirectionalEdge(ctx, edge, {
+    message: "fix the blocker",
+    round: 2,
+    status: "CHANGES_REQUESTED",
+  });
+  assertEquals(result.isError, undefined);
+  assertEquals(result.structuredContent?.round, 2);
+  assertEquals(result.structuredContent?.status, "CHANGES_REQUESTED");
+  assertEquals(herdr.prompts[0]?.text.includes("## Round 2 / 5"), true);
+  assertEquals(herdr.prompts[0]?.text.includes("## Status CHANGES_REQUESTED"), true);
+});
+
+Deno.test("tools: respond schema rejects missing status", () => {
+  let threw = false;
+  try {
+    Schema.decodeUnknownSync(RespondDirectionalArgs)({
+      message: "findings",
+      round: 1,
+    });
+  } catch {
+    threw = true;
+  }
+  assertEquals(threw, true);
+});
+
+Deno.test("tools: two-role directional has no round keys in schema", () => {
+  const result = loadWorkflowFromFile(fixturePath("two-role.toml"));
+  assertEquals(result.ok, true);
+  if (!result.ok) return;
+  const edge = result.workflow.edges[0]!;
+  assertEquals(edge.round, undefined);
+  const schema = buildDirectionalInputSchema(edge);
+  const jsonSchema = schema["~standard"].jsonSchema.input({ target: "draft-07" }) as {
+    properties?: Record<string, unknown>;
+  };
+  assertEquals("round" in (jsonSchema.properties ?? {}), false);
+  assertEquals("status" in (jsonSchema.properties ?? {}), false);
+  assertEquals("reset" in (jsonSchema.properties ?? {}), false);
+  assertEquals("max_rounds" in (jsonSchema.properties ?? {}), false);
 });
 
 Deno.test("tools: busy_peer on working target", async () => {

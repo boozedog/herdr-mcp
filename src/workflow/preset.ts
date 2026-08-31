@@ -7,6 +7,7 @@ export const RESEARCH_IMPL_REVIEW_PRESET: WorkflowConfig = {
     timeout_ms: 600_000,
     read_lines: 120,
     busy_peer: "refuse",
+    max_rounds: 5,
   },
   pairing: { strategy: "role-suffix" },
   roles: [
@@ -16,9 +17,9 @@ export const RESEARCH_IMPL_REVIEW_PRESET: WorkflowConfig = {
     { id: "final", match: "^(final|codex)($|[0-9].*|-.*)", mutate: false },
   ],
   edges: [
-    { id: "research_to_impl", from: "research", to: "impl", wait: false, tool: true },
-    { id: "impl_to_review", from: "impl", to: "review", wait: true, tool: true },
-    { id: "review_to_impl", from: "review", to: "impl", wait: false, tool: true },
+    { id: "research_to_impl", from: "research", to: "impl", tool: true },
+    { id: "impl_to_review", from: "impl", to: "review", tool: true, round: "submit" },
+    { id: "review_to_impl", from: "review", to: "impl", tool: true, round: "respond" },
   ],
   envelope: {
     required: ["mission", "definition_of_done"],
@@ -30,6 +31,7 @@ export const TWO_ROLE_FIXTURE: WorkflowConfig = {
     timeout_ms: 600_000,
     read_lines: 120,
     busy_peer: "refuse",
+    max_rounds: 5,
   },
   pairing: { strategy: "role-suffix" },
   roles: [
@@ -37,7 +39,7 @@ export const TWO_ROLE_FIXTURE: WorkflowConfig = {
     { id: "do", match: "^do($|[0-9].*|-.*)", mutate: true },
   ],
   edges: [
-    { id: "plan_to_do", from: "plan", to: "do", wait: false, tool: true },
+    { id: "plan_to_do", from: "plan", to: "do", tool: true },
   ],
 };
 
@@ -49,6 +51,7 @@ export function normalizeWorkflow(config: WorkflowConfig, name: string, configPa
       timeout_ms: config.defaults?.timeout_ms ?? 600_000,
       read_lines: config.defaults?.read_lines ?? 120,
       busy_peer: config.defaults?.busy_peer ?? "refuse" as const,
+      max_rounds: config.defaults?.max_rounds ?? 5,
     },
     pairing: {
       strategy: config.pairing?.strategy ?? "role-suffix" as const,

@@ -69,6 +69,13 @@ export class HerdrBinError extends Schema.TaggedError<HerdrBinError>()("herdr_bi
   path: Schema.String,
 }) {}
 
+export class RoundCap extends Schema.TaggedError<RoundCap>()("round_cap", {
+  message: Schema.String,
+  round: Schema.Number,
+  max_rounds: Schema.Number,
+  pane_id: Schema.String,
+}) {}
+
 export type HerdrMcpError =
   | NotInHerdr
   | InvalidConfig
@@ -81,7 +88,8 @@ export type HerdrMcpError =
   | ConfirmationError
   | AmbiguousTarget
   | AgentPane
-  | HerdrBinError;
+  | HerdrBinError
+  | RoundCap;
 
 export const NOT_IN_HERDR_MESSAGE =
   "Not running inside Herdr. Start this MCP server from a Herdr pane with HERDR_ENV=1.";
@@ -103,6 +111,7 @@ const encoders = {
   ambiguous_target: Schema.encodeUnknownSync(AmbiguousTarget),
   agent_pane: Schema.encodeUnknownSync(AgentPane),
   herdr_bin_error: Schema.encodeUnknownSync(HerdrBinError),
+  round_cap: Schema.encodeUnknownSync(RoundCap),
 } as const;
 
 export function encodeError(error: HerdrMcpError): Record<string, unknown> {

@@ -6,10 +6,20 @@ export type BusyPeerPolicy = typeof BusyPeerPolicy.Type;
 export const PairingStrategy = Schema.Literal("role-suffix");
 export type PairingStrategy = typeof PairingStrategy.Type;
 
+export const RoundMode = Schema.Union([
+  Schema.Literal("submit"),
+  Schema.Literal("respond"),
+]);
+export type RoundMode = typeof RoundMode.Type;
+
+export const PositiveInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(1));
+export type PositiveInt = typeof PositiveInt.Type;
+
 export const DefaultsSchema = Schema.Struct({
   timeout_ms: Schema.optional(Schema.Number),
   read_lines: Schema.optional(Schema.Number),
   busy_peer: Schema.optional(BusyPeerPolicy),
+  max_rounds: Schema.optional(PositiveInt),
 });
 
 export const PairingSchema = Schema.Struct({
@@ -26,8 +36,8 @@ export const EdgeSchema = Schema.Struct({
   id: Schema.String,
   from: Schema.String,
   to: Schema.String,
-  wait: Schema.Boolean,
   tool: Schema.optional(Schema.Boolean),
+  round: Schema.optional(RoundMode),
 });
 
 export const EnvelopeSchema = Schema.Struct({
@@ -51,7 +61,7 @@ export type WorkflowConfig = typeof WorkflowConfigSchema.Type;
 export type LoadedWorkflow = {
   name: string;
   config_path: string | null;
-  defaults: Required<Pick<Defaults, "timeout_ms" | "read_lines">> & {
+  defaults: Required<Pick<Defaults, "timeout_ms" | "read_lines" | "max_rounds">> & {
     busy_peer: BusyPeerPolicy;
   };
   pairing: { strategy: PairingStrategy };

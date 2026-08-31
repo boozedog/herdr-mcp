@@ -56,10 +56,21 @@ Deno.test("workflow: HERDR_MCP_CONFIG bad file does not fall back", () => {
   }
 });
 
-Deno.test("workflow: preset pairing table", () => {
+Deno.test("workflow: preset edge round metadata", () => {
   const wf = normalizeWorkflow(RESEARCH_IMPL_REVIEW_PRESET, "research-impl-review", null);
   const edges = Object.fromEntries(wf.edges.map((e) => [e.id, e]));
-  assertEquals(edges.research_to_impl?.wait, false);
-  assertEquals(edges.impl_to_review?.wait, true);
-  assertEquals(edges.review_to_impl?.wait, false);
+  assertEquals(edges.research_to_impl?.round, undefined);
+  assertEquals(edges.impl_to_review?.round, "submit");
+  assertEquals(edges.review_to_impl?.round, "respond");
+  assertEquals(wf.defaults.max_rounds, 5);
+});
+
+Deno.test("workflow: wait in config returns invalid_config", () => {
+  const path = join(FIXTURES, "wait-config.toml");
+  const result = loadWorkflowFromFile(path);
+  assertEquals(result.ok, false);
+  if (!result.ok) {
+    assertEquals(result.error._tag, "invalid_config");
+    assertEquals(result.error.schema_path, "edges.wait");
+  }
 });

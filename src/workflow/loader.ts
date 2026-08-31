@@ -41,6 +41,15 @@ function formatSchemaError(error: unknown): { schema_path: string; detail: strin
   return { schema_path: message.split(":")[0] ?? "schema", detail: message };
 }
 
+function configUsesRemovedWaitKey(parsed: unknown): boolean {
+  if (typeof parsed !== "object" || parsed === null) return false;
+  const edges = (parsed as { edges?: unknown }).edges;
+  if (!Array.isArray(edges)) return false;
+  return edges.some((edge) =>
+    typeof edge === "object" && edge !== null && "wait" in edge
+  );
+}
+
 export function loadWorkflowFromFile(path: string): WorkflowLoadResult {
   let raw: string;
   try {
@@ -68,6 +77,18 @@ export function loadWorkflowFromFile(path: string): WorkflowLoadResult {
         path,
         schema_path: "toml",
         detail: String(cause),
+      }),
+    };
+  }
+
+  if (configUsesRemovedWaitKey(parsed)) {
+    return {
+      ok: false,
+      error: new InvalidConfig({
+        message: `Config at ${path} uses removed edge field "wait"`,
+        path,
+        schema_path: "edges.wait",
+        detail: 'Remove "wait" from edge definitions; directional tools are fire-and-forget.',
       }),
     };
   }
