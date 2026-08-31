@@ -1,4 +1,4 @@
-import type { Role } from "./workflow/schema.ts";
+import type { EdgePairMode, Role } from "./workflow/schema.ts";
 
 export type RoleMatch = {
   role_id: string;
@@ -57,6 +57,25 @@ export function findMatchingTabLabel(
     if (match.role_id === toRole.id && match.suffix === suffix) return tab.label;
   }
   return undefined;
+}
+
+/** Tab labels matching the target role for the given pair mode. */
+export function findTabLabelsForPair(
+  tabs: { label: string }[],
+  toRole: Role,
+  pair: EdgePairMode,
+  callerSuffix: string,
+): string[] {
+  if (pair === "suffix") {
+    const label = findMatchingTabLabel(tabs, toRole, callerSuffix);
+    return label ? [label] : [];
+  }
+  return tabs
+    .filter((tab) => {
+      const match = detectRole(tab.label, [toRole]);
+      return match.role_id === toRole.id && match.suffix === "";
+    })
+    .map((tab) => tab.label);
 }
 
 /** Impl-capable tab labels per #4. */

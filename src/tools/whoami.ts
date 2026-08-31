@@ -1,6 +1,7 @@
 import type { ServerContext, ToolResult } from "../context.ts";
 import {
   buildWhoamiEdges,
+  effectiveEdgePair,
   errorResult,
   getCallerContext,
   isToolResult,
@@ -48,6 +49,7 @@ export function handleWorkflow(ctx: ServerContext): ToolResult {
       from: e.from,
       to: e.to,
       tool: e.tool ?? false,
+      pair: effectiveEdgePair(e),
       ...(e.round !== undefined ? { round: e.round } : {}),
     })),
   });

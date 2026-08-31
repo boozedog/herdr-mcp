@@ -1,5 +1,5 @@
 import { assertEquals, assertExists } from "@std/assert";
-import { detectRole, extractSuffix, isImplCapableLabel } from "./pairing.ts";
+import { detectRole, extractSuffix, findTabLabelsForPair, isImplCapableLabel } from "./pairing.ts";
 import { RESEARCH_IMPL_REVIEW_PRESET } from "./workflow/preset.ts";
 
 const roles = RESEARCH_IMPL_REVIEW_PRESET.roles;
@@ -38,4 +38,18 @@ Deno.test("pairing: impl-capable regex negatives", () => {
   assertEquals(isImplCapableLabel("implementation"), false);
   assertEquals(isImplCapableLabel("implies"), false);
   assertEquals(isImplCapableLabel("research"), false);
+});
+
+Deno.test("pairing: findTabLabelsForPair suffix", () => {
+  const implRole = { id: "impl", match: "^impl($|[0-9].*|-.*)", mutate: true };
+  const tabs = [{ label: "impl" }, { label: "impl2" }];
+  const labels = findTabLabelsForPair(tabs, implRole, "suffix", "2");
+  assertEquals(labels, ["impl2"]);
+});
+
+Deno.test("pairing: findTabLabelsForPair unsuffixed", () => {
+  const implRole = { id: "impl", match: "^impl($|[0-9].*|-.*)", mutate: true };
+  const tabs = [{ label: "impl" }, { label: "impl2" }];
+  const labels = findTabLabelsForPair(tabs, implRole, "unsuffixed", "3");
+  assertEquals(labels, ["impl"]);
 });

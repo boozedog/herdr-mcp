@@ -26,6 +26,17 @@ function fireAndForgetClause(directional: readonly Edge[], reverse: boolean): st
   return "handoff is fire-and-forget — do not wait.";
 }
 
+function effectivePair(edge: Edge): "suffix" | "unsuffixed" {
+  return edge.pair ?? "suffix";
+}
+
+function pairingClause(workflow: LoadedWorkflow): string | null {
+  const toolEdgeList = toolEdges(workflow);
+  if (toolEdgeList.length === 0) return null;
+  const parts = toolEdgeList.map((edge) => `${edge.id} ${effectivePair(edge)}`);
+  return `Pairing (${parts.join("; ")}). handoff { role } uses that pair when exactly one outbound edge targets the role; else suffix. Prefer edge or directional tools.`;
+}
+
 /** Build MCP initialize instructions from the loaded workflow. */
 export function generateInstructions(result: WorkflowLoadResult): string {
   if (!result.ok) {
@@ -65,6 +76,11 @@ export function generateInstructions(result: WorkflowLoadResult): string {
   }
   if (roundParts.length > 0) {
     sections.push(roundParts.join(" "));
+  }
+
+  const pairing = pairingClause(workflow);
+  if (pairing) {
+    sections.push(pairing);
   }
 
   return sections.join("\n\n");

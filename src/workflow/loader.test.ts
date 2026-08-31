@@ -60,8 +60,11 @@ Deno.test("workflow: preset edge round metadata", () => {
   const wf = normalizeWorkflow(RESEARCH_IMPL_REVIEW_PRESET, "research-impl-review", null);
   const edges = Object.fromEntries(wf.edges.map((e) => [e.id, e]));
   assertEquals(edges.research_to_impl?.round, undefined);
+  assertEquals(edges.research_to_impl?.pair, "unsuffixed");
   assertEquals(edges.impl_to_review?.round, "submit");
+  assertEquals(edges.impl_to_review?.pair, "suffix");
   assertEquals(edges.review_to_impl?.round, "respond");
+  assertEquals(edges.review_to_impl?.pair, "suffix");
   assertEquals(wf.defaults.max_rounds, 5);
 });
 

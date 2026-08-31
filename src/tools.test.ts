@@ -12,7 +12,7 @@ import {
 import { resetAllRoundCounters } from "./rounds.ts";
 import { handlePaneRead } from "./tools/pane_read.ts";
 import { handlePaneRun } from "./tools/pane_run.ts";
-import { handleWhoami } from "./tools/whoami.ts";
+import { handleWhoami, handleWorkflow } from "./tools/whoami.ts";
 import { computeToolNames } from "./server.ts";
 import { loadWorkflowFromFile } from "./workflow/loader.ts";
 import { normalizeWorkflow, RESEARCH_IMPL_REVIEW_PRESET, TWO_ROLE_FIXTURE } from "./workflow/preset.ts";
@@ -393,9 +393,9 @@ Deno.test("tools: peers workspace scoped", async () => {
   assertEquals(peers.some((p) => p.pane_id.startsWith("wX:")), false);
 });
 
-Deno.test("tools: suffix pairing research2 to impl2", () => {
+Deno.test("tools: unsuffixed pairing research3 to impl", () => {
   const herdr = mockWorkspace();
-  herdr.tabs.push({ tab_id: "wQ:t5", workspace_id: "wQ", label: "research2" });
+  herdr.tabs.push({ tab_id: "wQ:t5", workspace_id: "wQ", label: "research3" });
   herdr.tabs.push({ tab_id: "wQ:t6", workspace_id: "wQ", label: "impl2" });
   herdr.panes.push({
     pane_id: "wQ:p5",
@@ -416,10 +416,169 @@ Deno.test("tools: suffix pairing research2 to impl2", () => {
   );
   const wf = ctx.workflowResult.ok ? ctx.workflowResult.workflow : null;
   assertExists(wf);
-  const caller = { role_id: "research", suffix: "2", mutate: false };
-  const pane = resolveTarget(wf, caller, herdr.tabs, herdr.panes, "wQ", { role: "impl" });
+  const caller = { role_id: "research", suffix: "3", mutate: false };
+  const pane = resolveTarget(wf, caller, herdr.tabs, herdr.panes, "wQ", {
+    edge: "research_to_impl",
+  });
+  assertEquals("_tag" in pane, false);
+  if (!("_tag" in pane)) assertEquals(pane.pane_id, "wQ:p2");
+});
+
+Deno.test("tools: unsuffixed pairing research3 unknown when only impl2", () => {
+  const herdr = new MockHerdrClient();
+  herdr.tabs = [
+    { tab_id: "wQ:t5", workspace_id: "wQ", label: "research3" },
+    { tab_id: "wQ:t6", workspace_id: "wQ", label: "impl2" },
+  ];
+  herdr.panes = [
+    {
+      pane_id: "wQ:p5",
+      tab_id: "wQ:t5",
+      workspace_id: "wQ",
+      agent_status: "idle",
+    },
+    {
+      pane_id: "wQ:p6",
+      tab_id: "wQ:t6",
+      workspace_id: "wQ",
+      agent_status: "idle",
+      name: "impl2",
+    },
+  ];
+  const ctx = createServerContext(
+    { ...HERDR_ENV, HERDR_TAB_ID: "wQ:t5", HERDR_PANE_ID: "wQ:p5" },
+    herdr,
+  );
+  const wf = ctx.workflowResult.ok ? ctx.workflowResult.workflow : null;
+  assertExists(wf);
+  const caller = { role_id: "research", suffix: "3", mutate: false };
+  const pane = resolveTarget(wf, caller, herdr.tabs, herdr.panes, "wQ", {
+    edge: "research_to_impl",
+  });
+  assertEquals("_tag" in pane && pane._tag === "unknown_target", true);
+});
+
+Deno.test("tools: suffix pairing impl2 to review2", () => {
+  const herdr = mockWorkspace();
+  herdr.tabs.push({ tab_id: "wQ:t5", workspace_id: "wQ", label: "impl2" });
+  herdr.tabs.push({ tab_id: "wQ:t6", workspace_id: "wQ", label: "review2" });
+  herdr.panes.push({
+    pane_id: "wQ:p5",
+    tab_id: "wQ:t5",
+    workspace_id: "wQ",
+    agent_status: "idle",
+    name: "impl2",
+  });
+  herdr.panes.push({
+    pane_id: "wQ:p6",
+    tab_id: "wQ:t6",
+    workspace_id: "wQ",
+    agent_status: "idle",
+    name: "review2",
+  });
+  const ctx = createServerContext(
+    { ...HERDR_ENV, HERDR_TAB_ID: "wQ:t5", HERDR_PANE_ID: "wQ:p5" },
+    herdr,
+  );
+  const wf = ctx.workflowResult.ok ? ctx.workflowResult.workflow : null;
+  assertExists(wf);
+  const caller = { role_id: "impl", suffix: "2", mutate: true };
+  const pane = resolveTarget(wf, caller, herdr.tabs, herdr.panes, "wQ", {
+    edge: "impl_to_review",
+  });
   assertEquals("_tag" in pane, false);
   if (!("_tag" in pane)) assertEquals(pane.pane_id, "wQ:p6");
+});
+
+Deno.test("tools: whoami research3 pairs research_to_impl to unsuffixed impl", async () => {
+  const herdr = mockWorkspace();
+  herdr.tabs.push({ tab_id: "wQ:t5", workspace_id: "wQ", label: "research3" });
+  herdr.tabs.push({ tab_id: "wQ:t6", workspace_id: "wQ", label: "impl2" });
+  herdr.panes.push({
+    pane_id: "wQ:p5",
+    tab_id: "wQ:t5",
+    workspace_id: "wQ",
+    agent_status: "idle",
+  });
+  herdr.panes.push({
+    pane_id: "wQ:p6",
+    tab_id: "wQ:t6",
+    workspace_id: "wQ",
+    agent_status: "idle",
+    name: "impl2",
+  });
+  const ctx = createServerContext(
+    { ...HERDR_ENV, HERDR_TAB_ID: "wQ:t5", HERDR_PANE_ID: "wQ:p5" },
+    herdr,
+  );
+  const result = await handleWhoami(ctx);
+  assertEquals(result.structuredContent?.suffix, "3");
+  const edges = result.structuredContent?.edges as { id: string; paired_pane_id?: string }[];
+  assertEquals(edges.find((e) => e.id === "research_to_impl")?.paired_pane_id, "wQ:p2");
+});
+
+Deno.test("tools: unsuffixed pairing research3 to impl not impl3", () => {
+  const herdr = mockWorkspace();
+  herdr.tabs.push({ tab_id: "wQ:t5", workspace_id: "wQ", label: "research3" });
+  herdr.tabs.push({ tab_id: "wQ:t7", workspace_id: "wQ", label: "impl3" });
+  herdr.panes.push({
+    pane_id: "wQ:p5",
+    tab_id: "wQ:t5",
+    workspace_id: "wQ",
+    agent_status: "idle",
+  });
+  herdr.panes.push({
+    pane_id: "wQ:p7",
+    tab_id: "wQ:t7",
+    workspace_id: "wQ",
+    agent_status: "idle",
+    name: "impl3",
+  });
+  const ctx = createServerContext(
+    { ...HERDR_ENV, HERDR_TAB_ID: "wQ:t5", HERDR_PANE_ID: "wQ:p5" },
+    herdr,
+  );
+  const wf = ctx.workflowResult.ok ? ctx.workflowResult.workflow : null;
+  assertExists(wf);
+  const caller = { role_id: "research", suffix: "3", mutate: false };
+  const pane = resolveTarget(wf, caller, herdr.tabs, herdr.panes, "wQ", {
+    edge: "research_to_impl",
+  });
+  assertEquals("_tag" in pane, false);
+  if (!("_tag" in pane)) assertEquals(pane.pane_id, "wQ:p2");
+});
+
+Deno.test("tools: omitted pair defaults to suffix plan2 to do2", () => {
+  const herdr = new MockHerdrClient();
+  herdr.tabs = [
+    { tab_id: "wQ:t1", workspace_id: "wQ", label: "plan2" },
+    { tab_id: "wQ:t2", workspace_id: "wQ", label: "do" },
+    { tab_id: "wQ:t3", workspace_id: "wQ", label: "do2" },
+  ];
+  herdr.panes = [
+    { pane_id: "wQ:p1", tab_id: "wQ:t1", workspace_id: "wQ", agent_status: "idle" },
+    { pane_id: "wQ:p2", tab_id: "wQ:t2", workspace_id: "wQ", agent_status: "idle", name: "do" },
+    { pane_id: "wQ:p3", tab_id: "wQ:t3", workspace_id: "wQ", agent_status: "idle", name: "do2" },
+  ];
+  const ctx = createServerContext(HERDR_ENV, herdr);
+  ctx.workflowResult = {
+    ok: true,
+    workflow: normalizeWorkflow(TWO_ROLE_FIXTURE, "custom", null),
+  };
+  const caller = { role_id: "plan", suffix: "2", mutate: false };
+  const pane = resolveTarget(ctx.workflowResult.workflow, caller, herdr.tabs, herdr.panes, "wQ", {
+    edge: "plan_to_do",
+  });
+  assertEquals("_tag" in pane, false);
+  if (!("_tag" in pane)) assertEquals(pane.pane_id, "wQ:p3");
+});
+
+Deno.test("tools: workflow dump includes effective pair on edges", () => {
+  const ctx = createServerContext(HERDR_ENV, mockWorkspace());
+  const result = handleWorkflow(ctx);
+  const edges = result.structuredContent?.edges as { id: string; pair: string }[];
+  assertEquals(edges.find((e) => e.id === "research_to_impl")?.pair, "unsuffixed");
+  assertEquals(edges.find((e) => e.id === "impl_to_review")?.pair, "suffix");
 });
 
 Deno.test("tools: status fallback noisy agent get", async () => {

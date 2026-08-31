@@ -17,9 +17,23 @@ export const RESEARCH_IMPL_REVIEW_PRESET: WorkflowConfig = {
     { id: "final", match: "^(final|codex)($|[0-9].*|-.*)", mutate: false },
   ],
   edges: [
-    { id: "research_to_impl", from: "research", to: "impl", tool: true },
-    { id: "impl_to_review", from: "impl", to: "review", tool: true, round: "submit" },
-    { id: "review_to_impl", from: "review", to: "impl", tool: true, round: "respond" },
+    { id: "research_to_impl", from: "research", to: "impl", tool: true, pair: "unsuffixed" },
+    {
+      id: "impl_to_review",
+      from: "impl",
+      to: "review",
+      tool: true,
+      round: "submit",
+      pair: "suffix",
+    },
+    {
+      id: "review_to_impl",
+      from: "review",
+      to: "impl",
+      tool: true,
+      round: "respond",
+      pair: "suffix",
+    },
   ],
   envelope: {
     required: ["mission", "definition_of_done"],

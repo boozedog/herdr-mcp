@@ -23,7 +23,7 @@ import {
 import { isInHerdr, readHerdrEnvIds, type HerdrEnvIds } from "./herdr-env.ts";
 import {
   detectRole,
-  findMatchingTabLabel,
+  findTabLabelsForPair,
   isBareAgentKind,
   type RoleMatch,
 } from "./pairing.ts";
@@ -38,7 +38,7 @@ import {
 } from "./parse.ts";
 import { filterWorkspacePanes, filterWorkspaceTabs, isInWorkspace } from "./workspace.ts";
 import { loadWorkflow, type WorkflowLoadResult } from "./workflow/loader.ts";
-import type { Edge, LoadedWorkflow, Role } from "./workflow/schema.ts";
+import type { Edge, EdgePairMode, LoadedWorkflow, Role } from "./workflow/schema.ts";
 
 export type ToolResult = {
   isError?: boolean;
@@ -127,13 +127,18 @@ export function findEdge(workflow: LoadedWorkflow, edgeId: string): Edge | undef
   return workflow.edges.find((e) => e.id === edgeId);
 }
 
+export function effectiveEdgePair(edge: Edge): EdgePairMode {
+  return edge.pair ?? "suffix";
+}
+
 export function resolvePeerPane(
   workflow: LoadedWorkflow,
   caller: RoleMatch,
   toRoleId: string,
   tabs: HerdrTab[],
   panes: HerdrPane[],
-): HerdrPane | UnknownTarget {
+  pair: EdgePairMode = "suffix",
+): HerdrPane | UnknownTarget | AmbiguousTarget {
   const toRole = findRole(workflow, toRoleId);
   if (!toRole) {
     return new UnknownTarget({
@@ -141,13 +146,33 @@ export function resolvePeerPane(
       target: toRoleId,
     });
   }
-  const label = findMatchingTabLabel(tabs, toRole, caller.suffix);
-  if (!label) {
+  const labels = findTabLabelsForPair(tabs, toRole, pair, caller.suffix);
+  if (labels.length === 0) {
     return new UnknownTarget({
-      message: `No tab found for role ${toRoleId} with suffix "${caller.suffix}"`,
+      message: pair === "unsuffixed"
+        ? `No unsuffixed tab found for role ${toRoleId}`
+        : `No tab found for role ${toRoleId} with suffix "${caller.suffix}"`,
       target: toRoleId,
     });
   }
+  if (labels.length > 1) {
+    const paneIds: string[] = [];
+    for (const label of labels) {
+      const tab = tabs.find((t) => t.label === label);
+      if (!tab) continue;
+      for (const pane of panes.filter((p) => p.tab_id === tab.tab_id)) {
+        paneIds.push(pane.pane_id);
+      }
+    }
+    return new AmbiguousTarget({
+      message: pair === "unsuffixed"
+        ? `Multiple unsuffixed tabs found for role ${toRoleId}; provide pane_id`
+        : `Multiple tabs found for role ${toRoleId} with suffix "${caller.suffix}"; provide pane_id`,
+      tab_label: labels[0]!,
+      pane_ids: paneIds,
+    });
+  }
+  const label = labels[0]!;
   const tab = tabs.find((t) => t.label === label);
   if (!tab) {
     return new UnknownTarget({
@@ -155,14 +180,21 @@ export function resolvePeerPane(
       target: toRoleId,
     });
   }
-  const pane = panes.find((p) => p.tab_id === tab.tab_id);
-  if (!pane) {
+  const tabPanes = panes.filter((p) => p.tab_id === tab.tab_id);
+  if (tabPanes.length === 0) {
     return new UnknownTarget({
       message: `No pane found for tab ${tab.tab_id}`,
       target: tab.tab_id,
     });
   }
-  return pane;
+  if (tabPanes.length > 1) {
+    return new AmbiguousTarget({
+      message: `Tab ${label} has ${tabPanes.length} panes; provide pane_id`,
+      tab_label: label,
+      pane_ids: tabPanes.map((p) => p.pane_id),
+    });
+  }
+  return tabPanes[0]!;
 }
 
 export function resolveByTabLabel(
@@ -259,7 +291,7 @@ export function resolveTarget(
   panes: HerdrPane[],
   workspaceId: string,
   input: ResolveInput,
-): HerdrPane | UnknownTarget | UnknownEdge {
+): HerdrPane | UnknownTarget | UnknownEdge | AmbiguousTarget {
   if (input.pane_id) {
     return resolveByPaneId(input.pane_id, workspaceId, panes);
   }
@@ -271,10 +303,21 @@ export function resolveTarget(
         edge: input.edge,
       });
     }
-    return resolvePeerPane(workflow, caller, edge.to, tabs, panes);
+    return resolvePeerPane(
+      workflow,
+      caller,
+      edge.to,
+      tabs,
+      panes,
+      effectiveEdgePair(edge),
+    );
   }
   if (input.role) {
-    return resolvePeerPane(workflow, caller, input.role, tabs, panes);
+    const outbound = workflow.edges.filter(
+      (edge) => edge.from === caller.role_id && edge.to === input.role,
+    );
+    const pair = outbound.length === 1 ? effectiveEdgePair(outbound[0]!) : "suffix";
+    return resolvePeerPane(workflow, caller, input.role, tabs, panes, pair);
   }
   return new UnknownTarget({
     message: "Provide edge, role, or pane_id",
@@ -416,8 +459,17 @@ export function buildWhoamiEdges(
   return workflow.edges
     .filter((edge) => edge.from === caller.role_id)
     .map((edge) => {
-      const peer = resolvePeerPane(workflow, caller, edge.to, tabs, panes);
-      const paired_pane_id = peer instanceof UnknownTarget ? undefined : peer.pane_id;
+      const peer = resolvePeerPane(
+        workflow,
+        caller,
+        edge.to,
+        tabs,
+        panes,
+        effectiveEdgePair(edge),
+      );
+      const paired_pane_id = peer instanceof UnknownTarget || peer instanceof AmbiguousTarget
+        ? undefined
+        : peer.pane_id;
       return {
         id: edge.id,
         to: edge.to,

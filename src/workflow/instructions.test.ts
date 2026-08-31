@@ -45,6 +45,9 @@ Deno.test("instructions: preset names directional tools fire-and-forget", () => 
   assertMatch(text, /agent_pane/);
   assertMatch(text, /Round submit \(impl_to_review\)/);
   assertMatch(text, /Round respond \(review_to_impl\)/);
+  assertMatch(text, /Pairing \(research_to_impl unsuffixed/);
+  assertMatch(text, /impl_to_review suffix/);
+  assertMatch(text, /review_to_impl suffix\)/);
   assertEquals(forbiddenToolNames(text), false);
   assertEquals(text.includes("boozedog"), false);
   assertEquals(text.includes("gitea"), false);
@@ -71,6 +74,7 @@ Deno.test("instructions: two-role fixture mentions only plan and do", () => {
   assertEquals(text.includes("reverse edge"), false);
   assertEquals(text.includes("Round submit"), false);
   assertEquals(text.includes("Round respond"), false);
+  assertMatch(text, /Pairing \(plan_to_do suffix\)/);
   assertEquals(forbiddenToolNames(text), false);
 });
 

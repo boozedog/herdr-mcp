@@ -185,11 +185,20 @@ Always registered:
 
 With the default preset, these directional tools are also registered (`edge.tool = true` in config). All are **fire-and-forget** (same as `handoff`; no lifecycle wait or read).
 
-| Tool | From | To | Round |
-| --- | --- | --- | --- |
-| `research_to_impl` | research* | paired impl | — |
-| `impl_to_review` | impl* | paired review | submit (server assigns round; optional `reset`, `max_rounds`) |
-| `review_to_impl` | review* | paired impl | respond (requires `round` + `status`: `APPROVED` \| `CHANGES_REQUESTED`) |
+| Tool | From | To | Pair | Round |
+| --- | --- | --- | --- | --- |
+| `research_to_impl` | research* | unsuffixed impl | unsuffixed | — |
+| `impl_to_review` | impl* | paired review (same suffix) | suffix | submit (server assigns round; optional `reset`, `max_rounds`) |
+| `review_to_impl` | review* | paired impl (same suffix) | suffix | respond (requires `round` + `status`: `APPROVED` \| `CHANGES_REQUESTED`) |
+
+**Pairing modes** (per-edge `pair` field in config):
+
+- `suffix` (default) — peer tab label = target role + caller suffix (`impl2` → `review2`)
+- `unsuffixed` — peer is the target role tab with no suffix (`research3` → `impl`, not `impl3` or `impl2`)
+
+Omit `pair` on an edge to default to `suffix`. There is no fallback from unsuffixed to suffix-matched tabs — if the unsuffixed tab is missing, resolve returns `unknown_target`. Pass `pane_id` to override pairing.
+
+`handoff { role = "..." }` without `edge`: if the caller has exactly one outbound edge to that role, resolve uses that edge's `pair`; otherwise suffix. Prefer named directional tools or `handoff { edge = "..." }` when multiple edges exist.
 
 Review-loop edges use in-process round counting (default cap **5** via `defaults.max_rounds`). When the cap is exceeded, `impl_to_review` returns `round_cap` and does not submit. Pass `reset: true` to start a new slice. Round state is not persisted — MCP restart clears counters.
 
@@ -200,11 +209,19 @@ Example workflow config fragment:
 max_rounds = 5
 
 [[edges]]
+id = "research_to_impl"
+from = "research"
+to = "impl"
+tool = true
+pair = "unsuffixed"
+
+[[edges]]
 id = "impl_to_review"
 from = "impl"
 to = "review"
 tool = true
 round = "submit"
+pair = "suffix"
 
 [[edges]]
 id = "review_to_impl"
@@ -212,6 +229,7 @@ from = "review"
 to = "impl"
 tool = true
 round = "respond"
+pair = "suffix"
 ```
 
 The removed `wait` edge field is no longer valid; configs that still set it fail with `invalid_config`.

@@ -12,6 +12,12 @@ export const RoundMode = Schema.Union([
 ]);
 export type RoundMode = typeof RoundMode.Type;
 
+export const EdgePairMode = Schema.Union([
+  Schema.Literal("suffix"),
+  Schema.Literal("unsuffixed"),
+]);
+export type EdgePairMode = typeof EdgePairMode.Type;
+
 export const PositiveInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(1));
 export type PositiveInt = typeof PositiveInt.Type;
 
@@ -38,6 +44,7 @@ export const EdgeSchema = Schema.Struct({
   to: Schema.String,
   tool: Schema.optional(Schema.Boolean),
   round: Schema.optional(RoundMode),
+  pair: Schema.optional(EdgePairMode),
 });
 
 export const EnvelopeSchema = Schema.Struct({
